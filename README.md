@@ -8,37 +8,37 @@ This project is to extract electrostatic features from a protein structure. Prop
 
 The proposed electrostatic features are:
 
-**Core Composition**
-net_charge
-isoelectric_point
-acid_fraction_all_residues
-base_fraction_all_residues
-acid_to_base_ratio
+**Core Composition (5)**
+- net_charge
+- isoelectric_point
+- acid_fraction_all_residues
+- base_fraction_all_residues
+- acid_to_base_ratio
 
-**pKa perturbation**
-acid_big_pka_shift_fraction_all_residues
-base_big_pka_shift_fraction_all_residues
-acid_big_pka_shift_fraction_acids_only
-base_big_pka_shift_fraction_bases_only
-mean_abs_pka_shift
-max_abs_pka_shift
+**pKa perturbation (6)**
+- acid_big_pka_shift_fraction_all_residues
+- base_big_pka_shift_fraction_all_residues
+- acid_big_pka_shift_fraction_acids_only
+- base_big_pka_shift_fraction_bases_only
+- mean_abs_pka_shift
+- max_abs_pka_shift
 
-**Surface charge**
-surface_net_charge
-surface_acid_to_base_ratio
-surface_positive_charge_density
-surface_negative_charge_density
+**Surface charge (4)**
+- surface_net_charge
+- surface_acid_to_base_ratio
+- surface_positive_charge_density
+- surface_negative_charge_density
 
-**Patch localization**
-largest_positive_patch_area
-largest_negative_patch_area
-largest_positive_patch_charge
-largest_negative_patch_charge
-largest_positive_patch_density
-largest_negative_patch_density
+**Patch localization (6)**
+- largest_positive_patch_area
+- largest_negative_patch_area
+- largest_positive_patch_charge
+- largest_negative_patch_charge
+- largest_positive_patch_density
+- largest_negative_patch_density
 
-**Charge Assymetry**
-all_charge_dipole_magnitude
-surface_charge_dipole_magnitude
-all_charge_dipole_normalized
-surface_charge_dipole_normalized
+**Charge Assymetry (4)**
+- all_charge_dipole_magnitude
+- surface_charge_dipole_magnitude
+- all_charge_dipole_normalized
+- surface_charge_dipole_normalized
