@@ -54,5 +54,5 @@ mcce-features = "mcce_features.cli:app"
 Homepage = "https://github.com/pclass-lab/elefeatures"
 Repository = "https://github.com/pclass-lab/elefeatures"
 Issues = "https://github.com/pclass-lab/elefeatures/issues"
-Documentation = "https://github.com/pclass-lab/elefeatures#README.md"
+Documentation = "https://github.com/pclass-lab/elefeatures#readme"
 
