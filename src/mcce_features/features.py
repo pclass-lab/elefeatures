@@ -1191,7 +1191,7 @@ class MCCEFeatureExtractor:
 
         positive_patches, negative_patches = _identify_patches(self.residues)
 
-        def summarize_largest_patch(patches, use_abs_charge: bool = False):
+        def summarize_largest_patch(patches, use_abs_charge: bool = True):
             """
             Return area, charge, and density for the largest patch by SASA area.
             """
