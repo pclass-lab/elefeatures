@@ -1172,31 +1172,6 @@ class MCCEFeatureExtractor:
         Returns:
             Dictionary mapping feature names to float values.
         """
-        logger = logging.getLogger(__name__)
-        features = {}
-        positive_patches, negative_patches = _identify_patches(self.residues)
-
-        return features
-    
-    def extract_patch_localization_features(self) -> Dict[str, float]:
-        """
-        Extract features related to the localization of charged patches on the protein surface.
-
-        Features:
-        - largest_positive_patch_area
-        - largest_negative_patch_area
-        - largest_positive_patch_charge
-        - largest_negative_patch_charge
-        - largest_positive_patch_density
-        - largest_negative_patch_density
-
-        Notes:
-        Patch density is defined as total charge in the patch divided by the solvent-accessible surface area of the patch.
-        positive and negative patches contain residues with positive and negative charge.
-
-        Returns:
-            Dictionary mapping feature names to float values.
-        """
 
         logger = logging.getLogger(__name__)
         sasa_pseudocount = 1e-6
