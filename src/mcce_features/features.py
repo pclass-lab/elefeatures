@@ -130,6 +130,11 @@ class MCCEFeatureExtractor:
             "mean_abs_pka_shift",
             "max_abs_pka_shift",
 
+            "surface_net_charge",
+            "surface_acid_to_base_ratio",
+            "surface_positive_charge_density",
+            "surface_negative_charge_density",
+
         ]
 
 
@@ -420,6 +425,90 @@ class MCCEFeatureExtractor:
 
         return features
 
+    
+    def extract_surface_charge_features(self) -> Dict[str, float]:
+        """
+        Extract surface charge features based on the charges of residues and their solvent accessibility.
+
+        Features:
+        - surface_net_charge
+        - surface_acid_to_base_ratio
+        - surface_positive_charge_density
+        - surface_negative_charge_density
+
+        Data source:
+        - Residue exposed surface area in residue.sasa
+        - Residue exposed surface area fraction in residue.sasa_fraction
+        - Residue charge in residue.charge
+        - charge density is defined as net charge divided by solvent-accessible surface area, with a small pseudocount to avoid division by zero
+
+        Returns:
+        Dictionary mapping feature names to float values.
+        """
+        logger = logging.getLogger(__name__)
+        surface_sasa_percentage_threshold = 0.1
+        sasa_pseudocount = 1e-6
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero surface charge features")
+            return {
+                "surface_net_charge": 0.0,
+                "surface_acid_to_base_ratio": 0.0,
+                "surface_positive_charge_density": 0.0,
+                "surface_negative_charge_density": 0.0,
+            }
+
+        surface_residues = [
+            residue for residue in self.residues
+            if getattr(residue, "sasa_fraction", 0.0) is not None
+            and residue.sasa_fraction > surface_sasa_percentage_threshold
+        ]
+
+        if not surface_residues:
+            logger.warning("No surface residues found; returning zero surface charge features")
+            return {
+                "surface_net_charge": 0.0,
+                "surface_acid_to_base_ratio": 0.0,
+                "surface_positive_charge_density": 0.0,
+                "surface_negative_charge_density": 0.0,
+            }
+
+        surface_net_charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in surface_residues)
+
+        surface_acid_charge = sum(
+            abs(getattr(residue, "charge", 0.0) or 0.0)
+            for residue in surface_residues
+            if (getattr(residue, "charge", 0.0) or 0.0) < 0
+        )
+
+        surface_base_charge = sum(
+            getattr(residue, "charge", 0.0) or 0.0
+            for residue in surface_residues
+            if (getattr(residue, "charge", 0.0) or 0.0) > 0
+        )
+
+        surface_total_sasa = sum(
+            getattr(residue, "sasa", 0.0) or 0.0
+            for residue in surface_residues
+        )
+
+        surface_acid_to_base_ratio = surface_acid_charge / (surface_base_charge + sasa_pseudocount)
+
+        surface_positive_charge_density = surface_base_charge / (
+            surface_total_sasa + sasa_pseudocount
+        )
+
+        surface_negative_charge_density = surface_acid_charge / (
+            surface_total_sasa + sasa_pseudocount
+        )
+
+        return {
+            "surface_net_charge": surface_net_charge,
+            "surface_acid_to_base_ratio": surface_acid_to_base_ratio,
+            "surface_positive_charge_density": surface_positive_charge_density,
+            "surface_negative_charge_density": surface_negative_charge_density,
+        }
+
 
     def extract_all_features(self, folder: Optional[str] = None) -> List[float]:
         """
@@ -438,11 +527,24 @@ class MCCEFeatureExtractor:
         logger.info(f"Initialize residue properties from MCCE output ...")
         self.initialize_residue_properties()
 
-        self.features = {}
-        self.features.update(self.extract_composition_features())
-        self.features.update(self.extract_pka_perturbation_features())
+        features = {}
+        features.update(self.extract_composition_features())
+        features.update(self.extract_pka_perturbation_features())
+        features.update(self.extract_surface_charge_features())
 
-        return list(self.features.values())
+        # Guardrail 1: missing registered features
+        missing = set(self.feature_names) - set(features)
+        if missing:
+            raise ValueError(f"Missing features: {sorted(missing)}")
+
+        # Guardrail 2: unregistered extra features
+        extra = set(features) - set(self.feature_names)
+        if extra:
+            raise ValueError(f"Unregistered features: {sorted(extra)}")
+
+        # The list order is now guaranteed by feature_names
+        return [features[name] for name in self.feature_names]
+
     
     def load_protein_structure(self):
         """Load the protein structure from MCCE output files."""
