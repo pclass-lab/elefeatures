@@ -232,6 +232,10 @@ class MCCEFeatureExtractor:
             "largest_positive_patch_density",
             "largest_negative_patch_density",
 
+            "all_charge_dipole_magnitude",
+            "surface_charge_dipole_magnitude",
+            "all_charge_dipole_normalized",
+            "surface_charge_dipole_normalized",
         ]
 
 
@@ -632,6 +636,7 @@ class MCCEFeatureExtractor:
         features.update(self.extract_pka_perturbation_features())
         features.update(self.extract_surface_charge_features())
         features.update(self.extract_patch_localization_features())
+        features.update(self.extract_asymmetry_features())
 
         # Guardrail 1: missing registered features
         missing = set(self.feature_names) - set(features)
@@ -1237,5 +1242,117 @@ class MCCEFeatureExtractor:
                 "largest_negative_patch_density": largest_negative_patch_density,
             }
         )
+
+        return features
+    
+    def extract_asymmetry_features(self) -> Dict[str, float]:
+        """
+        Extract features related to the asymmetry of charge distribution on the protein surface.
+
+        Features:
+        - all_charge_dipole_magnitude
+        - surface_charge_dipole_magnitude
+        - all_charge_dipole_normalized
+        - surface_charge_dipole_normalized
+
+        Notes:
+        Dipole vector is calculated as:
+
+            p = sum(q_i * (r_i - r_center))
+
+        where:
+            q_i = residue charge
+            r_i = residue anchor point
+            r_center = geometric center of selected residues
+
+        Normalized dipole is:
+
+            |p| / ((sum |q_i|) * Rg)
+
+        Returns:
+            Dictionary mapping feature names to float values.
+        """
+
+        logger = logging.getLogger(__name__)
+        surface_sasa_percentage_threshold = 0.1
+        pseudocount = 1e-6
+
+        features = {
+            "all_charge_dipole_magnitude": 0.0,
+            "surface_charge_dipole_magnitude": 0.0,
+            "all_charge_dipole_normalized": 0.0,
+            "surface_charge_dipole_normalized": 0.0,
+        }
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero asymmetry features")
+            return features
+
+        def get_valid_residues(residues):
+            valid = []
+
+            for residue in residues:
+                charge = getattr(residue, "charge", None)
+                anchor_point = getattr(residue, "anchor_point", None)
+
+                if charge is None or anchor_point is None:
+                    continue
+
+                valid.append(residue)
+
+            return valid
+
+        def calculate_dipole_features(residues):
+            residues = get_valid_residues(residues)
+
+            if not residues:
+                return 0.0, 0.0
+
+            coords = np.array(
+                [residue.anchor_point for residue in residues],
+                dtype=float,
+            )
+
+            charges = np.array(
+                [getattr(residue, "charge", 0.0) or 0.0 for residue in residues],
+                dtype=float,
+            )
+
+            center = coords.mean(axis=0)
+
+            centered_coords = coords - center
+
+            dipole_vector = np.sum(charges[:, np.newaxis] * centered_coords, axis=0)
+
+            dipole_magnitude = float(np.linalg.norm(dipole_vector))
+
+            squared_distances = np.sum(centered_coords ** 2, axis=1)
+            rg = float(np.sqrt(np.mean(squared_distances)))
+
+            total_abs_charge = float(np.sum(np.abs(charges)))
+
+            dipole_normalized = dipole_magnitude / (
+                total_abs_charge * rg + pseudocount
+            )
+
+            return dipole_magnitude, dipole_normalized
+
+        all_residues = get_valid_residues(self.residues)
+
+        surface_residues = [
+            residue for residue in all_residues
+            if (getattr(residue, "sasa_fraction", 0.0) or 0.0)
+            > surface_sasa_percentage_threshold
+        ]
+
+        (
+            features["all_charge_dipole_magnitude"],
+            features["all_charge_dipole_normalized"],
+        ) = calculate_dipole_features(all_residues)
+
+        (
+            features["surface_charge_dipole_magnitude"],
+            features["surface_charge_dipole_normalized"],
+        ) = calculate_dipole_features(surface_residues)
 
         return features
