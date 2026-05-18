@@ -862,7 +862,7 @@ class MCCEFeatureExtractor:
         )
 
         # ------------------------------------------------------------
-        # Addign pKa0 values to residues based on their type
+        # Adding pKa0 values to residues based on their type
         # ------------------------------------------------------------
         for residue in self.residues:
             residue.pka0 = PK0_VALUES.get(residue.name, 0.0)
