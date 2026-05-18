@@ -7,7 +7,7 @@ import logging
 
 import numpy as np
 from typing import Dict, List, Optional
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 
 ACIDS = {"ASP", "GLU", "CTR"}
 BASES = {"LYS", "ARG", "HIS", "NTR", "NTG"}
@@ -458,8 +458,6 @@ class MCCEFeatureExtractor:
                     residue.atoms = []
 
                     residues_by_id[residue_id] = residue
-
-                    new_residue_count += 1
 
                     logger.debug(
                         "Created residue %s",
