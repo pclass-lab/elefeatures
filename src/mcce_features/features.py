@@ -440,7 +440,10 @@ class MCCEFeatureExtractor:
         - Residue exposed surface area in residue.sasa
         - Residue exposed surface area fraction in residue.sasa_fraction
         - Residue charge in residue.charge
-        - charge density is defined as net charge divided by solvent-accessible surface area, with a small pseudocount to avoid division by zero
+        - positive and negative charge densities are computed separately as
+          base_charge / solvent-accessible surface area and
+          acid_charge / solvent-accessible surface area, using a small
+          pseudocount to avoid division by zero
 
         Returns:
         Dictionary mapping feature names to float values.
