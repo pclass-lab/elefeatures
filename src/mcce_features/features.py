@@ -458,8 +458,6 @@ class MCCEFeatureExtractor:
 
                     residues_by_id[residue_id] = residue
 
-                    new_residue_count += 1
-
                     logger.debug(
                         "Created residue %s",
                         residue_id,
