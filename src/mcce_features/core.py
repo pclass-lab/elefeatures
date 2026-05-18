@@ -16,8 +16,9 @@ def extract(mcce_folder: str):
     extractor = MCCEFeatureExtractor()
     features = extractor.extract_all_features(folder=mcce_folder)
     feature_names = extractor.feature_names
-    print("\t".join(feature_names))
-    print("\t".join(f"{value:.3f}" for value in features))
+    for name, feature in zip(feature_names, features):
+        print(f"{name}: {feature}")
+
     logging.info(f"Extracted {len(features)} features from MCCE output.")
 
     return feature_names, features
