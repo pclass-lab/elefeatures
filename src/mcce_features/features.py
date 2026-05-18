@@ -388,7 +388,7 @@ class MCCEFeatureExtractor:
 
         features["acid_to_base_ratio"] = float(acid_to_base_ratio)
 
-        logger.info(
+        logger.debug(
             (
                 "Composition features: "
                 "residues=%d, acidic=%d, basic=%d, "
@@ -467,7 +467,7 @@ class MCCEFeatureExtractor:
             pka_shifts.append(abs_pka_shift)
 
             if abs_pka_shift >= big_shift_threshold:
-                logger.info(f"Large pKa shift found for residue {residue.residue_id}: abs_pka_shift {abs_pka_shift:.3f} = |pKa {residue.pka:.3f} - pKa0 {residue.pka0:.3f}|")
+                logger.debug(f"Large pKa shift found for residue {residue.residue_id}: abs_pka_shift {abs_pka_shift:.3f} = |pKa {residue.pka:.3f} - pKa0 {residue.pka0:.3f}|")
                 if residue.is_acidic:
                     acid_big_shift_count += 1
                 elif residue.is_basic:
@@ -508,7 +508,7 @@ class MCCEFeatureExtractor:
             else 0.0
         )
 
-        logger.info(
+        logger.debug(
             (
                 "pKa perturbation features: "
                 "residues=%d, acids=%d, bases=%d, "
@@ -625,10 +625,10 @@ class MCCEFeatureExtractor:
             self.mcce_folder = folder
 
         logger = logging.getLogger(__name__)
-        logger.info(f"Extracting features from MCCE folder: {self.mcce_folder}")
+        logger.debug(f"Extracting features from MCCE folder: {self.mcce_folder}")
         self.load_protein_structure()
 
-        logger.info(f"Initialize residue properties from MCCE output ...")
+        logger.debug(f"Initialize residue properties from MCCE output ...")
         self.initialize_residue_properties()
 
         features = {}
@@ -662,7 +662,7 @@ class MCCEFeatureExtractor:
 
         logger = logging.getLogger(__name__)
 
-        logger.info("Parsing step1_out.pdb: %s", pdb_file)
+        logger.debug("Parsing step1_out.pdb: %s", pdb_file)
 
         def residue_base_id(mcce_res_id: str) -> str:
             # Example: A0001_001 -> A0001
@@ -808,7 +808,7 @@ class MCCEFeatureExtractor:
 
         residues = list(residues_by_id.values())
 
-        logger.info(
+        logger.debug(
             "Parsed %d residues and %d atoms from %s",
             len(residues),
             total_atoms,
@@ -828,7 +828,7 @@ class MCCEFeatureExtractor:
             if residue.is_basic:
                 basic_count += 1
 
-        logger.info(
+        logger.debug(
             (
                 "lines=%d, "
                 "residues=%d, atoms=%d, "
@@ -855,10 +855,10 @@ class MCCEFeatureExtractor:
         sasa_file = f"{self.mcce_folder}/acc.res"
         pka_file = f"{self.mcce_folder}/pK.out"
 
-        logger.info("Initializing residue properties from MCCE output files")
-        logger.info("Charge file: %s", sum_charge_file)
-        logger.info("SASA file:   %s", sasa_file)
-        logger.info("pKa file:    %s", pka_file)
+        logger.debug("Initializing residue properties from MCCE output files")
+        logger.debug("Charge file: %s", sum_charge_file)
+        logger.debug("SASA file:   %s", sasa_file)
+        logger.debug("pKa file:    %s", pka_file)
 
         def normalize_mcce_residue_id(raw_id: str) -> str:
             """
@@ -918,7 +918,7 @@ class MCCEFeatureExtractor:
 
                     try:
                         ph7_index = ph_values.index("7.0")
-                        logger.info("Found pH 7.0 charge column at index %d", ph7_index)
+                        logger.debug("Found pH 7.0 charge column at index %d", ph7_index)
                     except ValueError:
                         logger.warning(
                             "Could not find pH 7.0 column in %s; charge values will not be loaded",
@@ -953,7 +953,7 @@ class MCCEFeatureExtractor:
                 charge_lines += 1
                 charge_values_loaded += 1
 
-        logger.info(
+        logger.debug(
             "Loaded charge values for %d residues from %s",
             charge_values_loaded,
             sum_charge_file,
@@ -994,7 +994,7 @@ class MCCEFeatureExtractor:
                 sasa_lines += 1
                 sasa_values_loaded += 1
 
-        logger.info(
+        logger.debug(
             "Loaded SASA values for %d residues from %s",
             sasa_values_loaded,
             sasa_file,
@@ -1063,7 +1063,7 @@ class MCCEFeatureExtractor:
                 pka_lines += 1
                 pka_values_loaded += 1
 
-        logger.info(
+        logger.debug(
             "Loaded pKa values for %d residues from %s",
             pka_values_loaded,
             pka_file,
@@ -1123,7 +1123,7 @@ class MCCEFeatureExtractor:
                 sasa_assigned += 1
             else:
                 missing_sasa += 1
-                logger.info(
+                logger.debug(
                     "Missing SASA for residue %s; setting to 0",
                     residue.residue_id,
                 )
@@ -1136,7 +1136,7 @@ class MCCEFeatureExtractor:
             else:
                 missing_pka += 1
 
-        logger.info(
+        logger.debug(
             (
                 "Residue property initialization summary: "
                 "residues=%d, "

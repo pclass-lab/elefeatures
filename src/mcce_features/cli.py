@@ -62,6 +62,15 @@ def version_cmd():
 @app.command("extract")
 def extract(
     mcce_folder: str = typer.Argument(..., help="Path to the MCCE working directory.")
+    
 ):
-    """Extract electrostatic features from MCCE working directory."""
+    """Extract electrostatic features from a MCCE working directory."""
     core.extract(mcce_folder)
+
+@app.command("extract-folders")
+def extract_folders_cmd(
+    folder_file: str = typer.Argument(..., help="Path to a text file containing MCCE folder paths (one per line)."),
+    output_file: str = typer.Option("mcce_elefeatures.tsv", help="Path to the output TSV file.")
+):
+    """Extract electrostatic features from multiple MCCE folders."""
+    core.extract_folders(folder_file, output_file)
