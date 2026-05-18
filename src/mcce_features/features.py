@@ -121,7 +121,15 @@ class MCCEFeatureExtractor:
             "isoelectric_point",
             "acid_fraction_all_residues",
             "base_fraction_all_residues",
-            "acid_to_base_ratio"
+            "acid_to_base_ratio",
+
+            "acid_big_pka_shift_fraction_all_residues",
+            "base_big_pka_shift_fraction_all_residues",
+            "acid_big_pka_shift_fraction_acids_only",
+            "base_big_pka_shift_fraction_bases_only",
+            "mean_abs_pka_shift",
+            "max_abs_pka_shift",
+
         ]
 
 
@@ -297,6 +305,40 @@ class MCCEFeatureExtractor:
 
         return features
 
+    def extract_pka_purturbation_features(self) -> Dict[str, float]:
+        """
+        Extract pKa perturbation features based on the difference between intrinsic pKa and pKa in the protein environment.
+
+        Features:
+            - acid_big_pka_shift_fraction_all_residues
+            - base_big_pka_shift_fraction_all_residues
+            - acid_big_pka_shift_fraction_acids_only
+            - base_big_pka_shift_fraction_bases_only
+            - mean_abs_pka_shift
+            - max_abs_pka_shift
+        Returns:
+            Dictionary mapping feature names to float values.
+        """
+        logger = logging.getLogger(__name__)
+        big_shift_threshold = 1.0
+        features = {}
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero pKa perturbation features")
+
+            return {
+                "acid_big_pka_shift_fraction_all_residues": 0.0,
+                "base_big_pka_shift_fraction_all_residues": 0.0,
+                "acid_big_pka_shift_fraction_acids_only": 0.0,
+                "base_big_pka_shift_fraction_bases_only": 0.0,
+                "mean_abs_pka_shift": 0.0,
+                "max_abs_pka_shift": 0.0,
+            }
+
+        return features
+
+
+
     def extract_all_features(self, folder: Optional[str] = None) -> List[float]:
         """
         Extract all electrostatic features from the MCCE output files in the specified folder.
@@ -316,6 +358,8 @@ class MCCEFeatureExtractor:
 
         self.features = {}
         self.features.update(self.extract_composition_features())
+        self.features.update(self.extract_pka_purturbation_features())
+
         return list(self.features.values())
     
     def load_protein_structure(self):
