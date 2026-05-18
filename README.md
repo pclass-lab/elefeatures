@@ -64,4 +64,5 @@ To extract feature from multiple MCCE folders
 mcce-features extract-folders <folder.lst>
 ```
 
-File <folder.lst> should have the mcce folder names, one per line. 
+File <folder.lst> can be a (space, comma, tab) delimited file with a
+MCCE folder name in the first column of each line.
