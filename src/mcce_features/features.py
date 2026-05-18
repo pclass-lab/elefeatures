@@ -72,7 +72,6 @@ ANCHOR_ATOM_NAMES = {
     # Aromatic
     "PHE": ["CZ"],
     "TRP": ["CZ2", "CH2"],
-    "TYR": ["OH"],
 
     # Small / special
     "GLY": ["CA"],
@@ -260,8 +259,10 @@ class MCCEFeatureExtractor:
         # ------------------------------------------------------------
         if basic_count > 0:
             acid_to_base_ratio = acidic_count / basic_count
+        elif acidic_count == 0 and basic_count == 0:
+            acid_to_base_ratio = 1.0
         else:
-            acid_to_base_ratio = float(acidic_count)
+            acid_to_base_ratio = 999.0   # Arbitrary large number to indicate all acids and no bases
 
         # ------------------------------------------------------------
         # Store features
