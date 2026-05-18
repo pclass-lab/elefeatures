@@ -3,9 +3,108 @@ MCCE Feature Extractor
 This module contains the core logic for extracting electrostatic features from MCCE output files.
 
 """
+import logging
+
 import numpy as np
 from typing import Dict, List, Optional
-from collections import Counter
+from collections import Counter, OrderedDict
+
+ACIDS = {"ASP", "GLU", "CTR"}
+BASES = {"LYS", "ARG", "HIS", "NTR", "NTG"}
+
+RESIDUE_ALIASES = {
+    "NTR": ["NTR", "NTG"],
+    "CYS": ["CYS", "CYD", "CYL", "CYX"],
+    "HIS": ["HIS", "HIL"],
+}
+
+PK0_VALUES = {
+    "ASP": 4.75,
+    "GLU": 4.75,
+    "LYS": 10.4,
+    "ARG": 12.5,
+    "HIS": 6.98,
+    "NTR": 8.00, 
+    "NTG": 8.00, 
+    "CTR": 3.75, 
+}
+
+
+# Representative side-chain anchor atoms
+# If multiple atoms are listed, use their geometric midpoint.
+#
+# Design philosophy for preliminary neighbor graphs:
+# - charged/polar groups -> functional atom(s)
+# - aromatic groups -> ring center approximated by distal atoms
+# - hydrophobics -> terminal carbon(s)
+# - glycines -> CA fallback
+
+ANCHOR_ATOM_NAMES = {
+
+    # Charged acidic
+    "ASP": ["OD1", "OD2"],
+    "GLU": ["OE1", "OE2"],
+
+    # Charged basic
+    "LYS": ["NZ"],
+    "ARG": ["NH1", "NH2"],   # better charge center than CZ
+    "HIS": ["ND1", "NE2"],
+
+    # Polar uncharged
+    "SER": ["OG"],
+    "THR": ["OG1"],
+    "ASN": ["OD1", "ND2"],
+    "GLN": ["OE1", "NE2"],
+    "CYS": ["SG"],
+    "CYD": ["SG"],           # deprotonated cysteine if used
+    "CYL": ["SG"],           # ligand/disulfide naming variants
+    "CYX": ["SG"],           # disulfide cystine
+    "TYR": ["OH"],
+
+    # Hydrophobic / aliphatic
+    "ALA": ["CB"],
+    "VAL": ["CG1", "CG2"],
+    "LEU": ["CD1", "CD2"],
+    "ILE": ["CD1"],
+    "MET": ["SD", "CE"],     # midpoint better than CE alone
+    "PRO": ["CG"],
+
+    # Aromatic
+    "PHE": ["CZ"],
+    "TRP": ["CZ2", "CH2"],
+    "TYR": ["OH"],
+
+    # Small / special
+    "GLY": ["CA"],
+
+    # Backbone-like / termini
+    "NTR": ["N"],
+    "NTG": ["N"],
+
+    # Carboxyl terminus
+    "CTR": ["O", "OXT"],     # midpoint of terminal oxygens
+}
+
+class Atom:
+    """A class representing an atom in the protein structure."""
+    def __init__(self):
+        self.name = ""                      # Atom name, stripped of the spaces used for alignment in PDB files, e.g., "CA", "OD1"
+        self.xyz = np.zeros(3)              # 3D coordinates of the atom, placeholder value
+
+class Residue:
+    """A class representing a residue in the protein structure."""
+    def __init__(self):
+        self.residue_id = ""                # Unique identifier for the residue, e.g., "ASP_A_25"
+        self.name = ""                      # Residue name, e.g., "ASP", "GLU", "LYS"
+        self.charge = 0.0                   # Placeholder value, should be set based on MCCE output
+        self.sasa = 0.0                     # Solvent Accessible Surface Area, placeholder value
+        self.sasa_fraction = 0.0            # Fraction of the residue's surface area that is solvent-accessible, placeholder value
+        self.pka0 = 0.0                     # Intrinsic pKa value, placeholder value
+        self.pka = 0.0                      # pKa value in the protein environment, placeholder value
+        self.is_acidic = False              # Whether the residue is acidic, placeholder value
+        self.is_basic = False               # Whether the residue is basic, placeholder value
+        self.atoms = []                     # List of Atom objects representing the atoms in the residue
+        self.anchor_point = np.zeros(3)     # 3D coordinates of the anchor point for the residue, placeholder value
 
 
 class MCCEFeatureExtractor:
@@ -19,19 +118,182 @@ class MCCEFeatureExtractor:
         self.mcce_folder = None
         # REGISTER ALL FEATURE NAMES HERE
         self.feature_names = [
-            "total_residues",
+            "net_charge",
+            "isoelectric_point",
+            "acid_fraction_all_residues",
+            "base_fraction_all_residues",
+            "acid_to_base_ratio"
         ]
 
 
     def extract_composition_features(self) -> Dict[str, float]:
         """
-        Extract composition features from MCCE output files.
+        Extract composition-based electrostatic features.
+
+        Features:
+            - net_charge
+            - isoelectric_point
+            - acid_fraction_all_residues
+            - base_fraction_all_residues
+            - acid_to_base_ratio
 
         Returns:
-            A dictionary mapping feature names to their corresponding float values.
+            Dictionary mapping feature names to float values.
         """
+
+        logger = logging.getLogger(__name__)
+
         features = {}
-        features["total_residues"] = 100  # Placeholder value
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero composition features")
+
+            return {
+                "net_charge": 0.0,
+                "isoelectric_point": 0.0,
+                "acid_fraction_all_residues": 0.0,
+                "base_fraction_all_residues": 0.0,
+                "acid_to_base_ratio": 0.0,
+            }
+
+        total_residues = len(self.residues)
+
+        acidic_residues = [
+            residue for residue in self.residues
+            if residue.is_acidic
+        ]
+
+        basic_residues = [
+            residue for residue in self.residues
+            if residue.is_basic
+        ]
+
+        acidic_count = len(acidic_residues)
+        basic_count = len(basic_residues)
+
+        # ------------------------------------------------------------
+        # Net charge and isoelectric point from sum_crg.out
+        # ------------------------------------------------------------
+        net_charge = 0.0
+        isoelectric_point = 0.0
+        sum_charge_file = f"{self.mcce_folder}/sum_crg.out"
+
+        ph_values = None
+        net_charge_values = None
+
+        with open(sum_charge_file, "r") as f:
+            for line in f:
+                fields = line.split()
+
+                if not fields:
+                    continue
+
+                if fields[0] == "ph":
+                    ph_values = [float(x) for x in fields[1:]]
+
+                elif fields[0] == "Net_Charge":
+                    net_charge_values = [float(x) for x in fields[1:]]
+
+        if ph_values is None or net_charge_values is None:
+            logger.warning(
+                "Could not find pH header or Net_Charge line in %s",
+                sum_charge_file,
+            )
+
+        else:
+            if len(ph_values) != len(net_charge_values):
+                logger.warning(
+                    "pH column count does not match Net_Charge column count in %s",
+                    sum_charge_file,
+                )
+
+            else:
+                # Net charge at pH 7.0
+                try:
+                    ph7_index = ph_values.index(7.0)
+                    net_charge = net_charge_values[ph7_index]
+                except ValueError:
+                    logger.warning("Could not find pH 7.0 column in %s", sum_charge_file)
+
+                # Estimate pI by linear interpolation where Net_Charge crosses zero
+                for i in range(len(ph_values) - 1):
+                    ph1, ph2 = ph_values[i], ph_values[i + 1]
+                    q1, q2 = net_charge_values[i], net_charge_values[i + 1]
+
+                    if q1 == 0.0:
+                        isoelectric_point = ph1
+                        break
+
+                    if q1 * q2 < 0:
+                        # Linear interpolation:
+                        # q = q1 + slope * (pH - ph1)
+                        # solve q = 0
+                        isoelectric_point = ph1 + (0.0 - q1) * (ph2 - ph1) / (q2 - q1)
+                        break
+
+                else:
+                    logger.warning(
+                        "Net_Charge does not cross zero in sampled pH range %.1f-%.1f",
+                        ph_values[0],
+                        ph_values[-1],
+                    )
+
+                    # Fallback: use pH with smallest absolute net charge
+                    min_abs_index = min(
+                        range(len(net_charge_values)),
+                        key=lambda i: abs(net_charge_values[i]),
+                    )
+                    isoelectric_point = ph_values[min_abs_index]
+
+        features["net_charge"] = float(net_charge)
+        features["isoelectric_point"] = float(isoelectric_point)
+
+
+        # ------------------------------------------------------------
+        # Composition fractions
+        # ------------------------------------------------------------
+        acid_fraction = acidic_count / total_residues
+        base_fraction = basic_count / total_residues
+
+        # ------------------------------------------------------------
+        # Acid/base ratio
+        # ------------------------------------------------------------
+        if basic_count > 0:
+            acid_to_base_ratio = acidic_count / basic_count
+        else:
+            acid_to_base_ratio = float(acidic_count)
+
+        # ------------------------------------------------------------
+        # Store features
+        # ------------------------------------------------------------
+        features["net_charge"] = float(net_charge)
+
+        features["isoelectric_point"] = float(isoelectric_point)
+
+        features["acid_fraction_all_residues"] = float(acid_fraction)
+
+        features["base_fraction_all_residues"] = float(base_fraction)
+
+        features["acid_to_base_ratio"] = float(acid_to_base_ratio)
+
+        logger.info(
+            (
+                "Composition features: "
+                "residues=%d, acidic=%d, basic=%d, "
+                "net_charge=%.3f, pI=%.3f, "
+                "acid_fraction=%.3f, base_fraction=%.3f, "
+                "acid_to_base_ratio=%.3f"
+            ),
+            total_residues,
+            acidic_count,
+            basic_count,
+            net_charge,
+            isoelectric_point,
+            acid_fraction,
+            base_fraction,
+            acid_to_base_ratio,
+        )
+
         return features
 
     def extract_all_features(self, folder: Optional[str] = None) -> List[float]:
@@ -44,6 +306,515 @@ class MCCEFeatureExtractor:
         if folder is not None:
             self.mcce_folder = folder
 
+        logger = logging.getLogger(__name__)
+        logger.info(f"Extracting features from MCCE folder: {self.mcce_folder}")
+        self.load_protein_structure()
+
+        logger.info(f"Initialize residue properties from MCCE output ...")
+        self.initialize_residue_properties()
+
         self.features = {}
         self.features.update(self.extract_composition_features())
         return list(self.features.values())
+    
+    def load_protein_structure(self):
+        """Load the protein structure from MCCE output files."""
+        step1_file = f"{self.mcce_folder}/step1_out.pdb"
+        self.residues = self.parse_step1_pdb(step1_file)
+
+    def parse_step1_pdb(self, pdb_file: str) -> List[Residue]:
+        """Parse step1_out.pdb and extract residues, atoms, and anchor points."""
+
+        logger = logging.getLogger(__name__)
+
+        logger.info("Parsing step1_out.pdb: %s", pdb_file)
+
+        def residue_base_id(mcce_res_id: str) -> str:
+            # Example: A0001_001 -> A0001
+            return mcce_res_id.split("_")[0]
+
+        def is_hydrogen(atom_name: str) -> bool:
+            # Handles H, HA, HZ1, 1H, 2HD, etc.
+            name = atom_name.strip()
+            return (
+                name.startswith("H")
+                or (len(name) > 1 and name[0].isdigit() and name[1] == "H")
+            )
+
+        def compute_anchor_point(residue: Residue) -> np.ndarray:
+            atom_by_name = {atom.name: atom for atom in residue.atoms}
+
+            anchor_names = ANCHOR_ATOM_NAMES.get(residue.name, [])
+
+            xyz_list = [
+                atom_by_name[name].xyz
+                for name in anchor_names
+                if name in atom_by_name
+            ]
+
+            # Preferred: midpoint of configured anchor atoms
+            if xyz_list:
+                return np.mean(xyz_list, axis=0)
+
+            # Fallback 1: CA if available
+            if "CA" in atom_by_name:
+                logger.debug(
+                    "Anchor fallback to CA for residue %s",
+                    residue.residue_id,
+                )
+                return atom_by_name["CA"].xyz
+
+            # Fallback 2: average of heavy atoms
+            heavy_xyz = [
+                atom.xyz for atom in residue.atoms
+                if not is_hydrogen(atom.name)
+            ]
+
+            if heavy_xyz:
+                logger.debug(
+                    "Anchor fallback to heavy-atom centroid for residue %s",
+                    residue.residue_id,
+                )
+                return np.mean(heavy_xyz, axis=0)
+
+            # Fallback 3: average of all atoms
+            if residue.atoms:
+                logger.debug(
+                    "Anchor fallback to all-atom centroid for residue %s",
+                    residue.residue_id,
+                )
+                return np.mean(
+                    [atom.xyz for atom in residue.atoms],
+                    axis=0,
+                )
+
+            logger.warning(
+                "Residue %s has no atoms; using origin as anchor point",
+                residue.residue_id,
+            )
+
+            return np.zeros(3)
+
+        residues_by_id = OrderedDict()
+
+        total_lines = 0
+        skipped_short = 0
+        skipped_bad_xyz = 0
+        total_atoms = 0
+        new_residue_count = 0
+
+        with open(pdb_file, "r") as f:
+            for line in f:
+
+                total_lines += 1
+
+                if not line.startswith(("ATOM", "HETATM")):
+                    continue
+
+                fields = line.split()
+
+                if len(fields) < 8:
+                    skipped_short += 1
+                    logger.debug(
+                        "Skipping malformed atom line: %s",
+                        line.rstrip(),
+                    )
+                    continue
+
+                atom_name = fields[2].strip()
+                res_name = fields[3].strip()
+                mcce_res_id = fields[4].strip()
+
+                try:
+                    xyz = np.array(
+                        [
+                            float(fields[5]),
+                            float(fields[6]),
+                            float(fields[7]),
+                        ],
+                        dtype=float,
+                    )
+
+                except ValueError:
+                    skipped_bad_xyz += 1
+                    logger.debug(
+                        "Skipping atom with invalid coordinates: %s",
+                        line.rstrip(),
+                    )
+                    continue
+
+                base_id = residue_base_id(mcce_res_id)
+                residue_id = f"{res_name}_{base_id}"
+
+                if residue_id not in residues_by_id:
+
+                    residue = Residue()
+                    residue.residue_id = residue_id
+                    residue.name = res_name
+                    residue.is_acidic = res_name in ACIDS
+                    residue.is_basic = res_name in BASES
+                    residue.pk0 = PK0_VALUES.get(res_name, 0.0)
+                    residue.atoms = []
+
+                    residues_by_id[residue_id] = residue
+
+                    new_residue_count += 1
+
+                    logger.debug(
+                        "Created residue %s",
+                        residue_id,
+                    )
+
+                atom = Atom()
+                atom.name = atom_name
+                atom.xyz = xyz
+
+                residues_by_id[residue_id].atoms.append(atom)
+
+                total_atoms += 1
+
+        residues = list(residues_by_id.values())
+
+        logger.info(
+            "Parsed %d residues and %d atoms from %s",
+            len(residues),
+            total_atoms,
+            pdb_file,
+        )
+
+        acidic_count = 0
+        basic_count = 0
+
+        for residue in residues:
+
+            residue.anchor_point = compute_anchor_point(residue)
+
+            if residue.is_acidic:
+                acidic_count += 1
+
+            if residue.is_basic:
+                basic_count += 1
+
+        logger.info(
+            (
+                "lines=%d, "
+                "residues=%d, atoms=%d, "
+                "acidic=%d, basic=%d, "
+                "skipped_short=%d, skipped_bad_xyz=%d"
+            ),
+            total_lines,
+            len(residues),
+            total_atoms,
+            acidic_count,
+            basic_count,
+            skipped_short,
+            skipped_bad_xyz,
+        )
+
+        return residues
+    
+    def initialize_residue_properties(self):
+        """Initialize residue charge, SASA, SASA fraction, and pKa from MCCE output files."""
+
+        logger = logging.getLogger(__name__)
+
+        sum_charge_file = f"{self.mcce_folder}/sum_crg.out"
+        sasa_file = f"{self.mcce_folder}/acc.res"
+        pka_file = f"{self.mcce_folder}/pK.out"
+
+        logger.info("Initializing residue properties from MCCE output files")
+        logger.info("Charge file: %s", sum_charge_file)
+        logger.info("SASA file:   %s", sasa_file)
+        logger.info("pKa file:    %s", pka_file)
+
+        def normalize_mcce_residue_id(raw_id: str) -> str:
+            """
+            Convert MCCE residue IDs to the Residue.residue_id format.
+
+            Examples:
+                LYS+A0001_ -> LYS_A0001
+                GLU-A0007_ -> GLU_A0007
+                NTR+A0001_ -> NTR_A0001
+            """
+            raw_id = raw_id.strip()
+
+            raw_id = raw_id.rstrip("_")
+
+            if "+" in raw_id:
+                res_name, res_num = raw_id.split("+", 1)
+            elif "-" in raw_id:
+                res_name, res_num = raw_id.split("-", 1)
+            else:
+                return raw_id
+
+            return f"{res_name}_{res_num}"
+
+        def safe_float(value: str):
+            """Return float(value), or None if it is not a plain number."""
+            try:
+                return float(value)
+            except ValueError:
+                return None
+
+        residue_by_id = {
+            residue.residue_id: residue
+            for residue in self.residues
+        }
+
+        charge_by_id = {}
+        sasa_by_id = {}
+        pka_by_id = {}
+
+        # ------------------------------------------------------------
+        # Parse sum_crg.out
+        # ------------------------------------------------------------
+        charge_lines = 0
+        charge_values_loaded = 0
+        skipped_charge_lines = 0
+        ph7_index = None
+
+        with open(sum_charge_file, "r") as f:
+            for line in f:
+                fields = line.split()
+
+                if not fields:
+                    continue
+
+                if fields[0] == "ph":
+                    ph_values = fields[1:]
+
+                    try:
+                        ph7_index = ph_values.index("7.0")
+                        logger.info("Found pH 7.0 charge column at index %d", ph7_index)
+                    except ValueError:
+                        logger.warning(
+                            "Could not find pH 7.0 column in %s; charge values will not be loaded",
+                            sum_charge_file,
+                        )
+                        ph7_index = None
+
+                    continue
+
+                if ph7_index is None:
+                    continue
+
+                if len(fields) <= ph7_index + 1:
+                    skipped_charge_lines += 1
+                    continue
+
+                raw_res_id = fields[0]
+
+                # Skip separator or malformed lines
+                if raw_res_id.startswith("-"):
+                    skipped_charge_lines += 1
+                    continue
+
+                charge = safe_float(fields[ph7_index + 1])
+                if charge is None:
+                    skipped_charge_lines += 1
+                    continue
+
+                residue_id = normalize_mcce_residue_id(raw_res_id)
+                charge_by_id[residue_id] = charge
+
+                charge_lines += 1
+                charge_values_loaded += 1
+
+        logger.info(
+            "Loaded charge values for %d residues from %s",
+            charge_values_loaded,
+            sum_charge_file,
+        )
+
+        # ------------------------------------------------------------
+        # Parse acc.res
+        # ------------------------------------------------------------
+        sasa_lines = 0
+        sasa_values_loaded = 0
+        skipped_sasa_lines = 0
+
+        with open(sasa_file, "r") as f:
+            for line in f:
+                fields = line.split()
+
+                if len(fields) < 5:
+                    skipped_sasa_lines += 1
+                    continue
+
+                if fields[0] != "RES":
+                    skipped_sasa_lines += 1
+                    continue
+
+                res_name = fields[1]
+                res_num = fields[2]
+                residue_id = f"{res_name}_{res_num}"
+
+                sasa = safe_float(fields[3])
+                sasa_fraction = safe_float(fields[4])
+
+                if sasa is None or sasa_fraction is None:
+                    skipped_sasa_lines += 1
+                    continue
+
+                sasa_by_id[residue_id] = (sasa, sasa_fraction)
+
+                sasa_lines += 1
+                sasa_values_loaded += 1
+
+        logger.info(
+            "Loaded SASA values for %d residues from %s",
+            sasa_values_loaded,
+            sasa_file,
+        )
+
+        # ------------------------------------------------------------
+        # Parse pK.out
+        # ------------------------------------------------------------
+        pka_lines = 0
+        pka_values_loaded = 0
+        skipped_pka_lines = 0
+        non_numeric_pka_count = 0
+
+        with open(pka_file, "r") as f:
+            for line in f:
+                fields = line.split()
+
+                if not fields:
+                    continue
+
+                # Skip header
+                if fields[0] == "pH":
+                    continue
+
+                raw_res_id = fields[0]
+
+                # Skip separator or malformed lines
+                if raw_res_id.startswith("-"):
+                    skipped_pka_lines += 1
+                    continue
+
+                if len(fields) < 2:
+                    skipped_pka_lines += 1
+                    continue
+
+                residue_id = normalize_mcce_residue_id(raw_res_id)
+
+                # Normal case:
+                # LYS+A0001_  9.547  0.978  0.008
+                #
+                # Non-number cases may appear as:
+                # ASP-A0018_  < 0.0
+                # LYS+A0013_  > 14.0
+                pka = safe_float(fields[1])
+
+                if pka is None:
+                    non_numeric_pka_count += 1
+
+                    residue = residue_by_id.get(residue_id)
+
+                    if residue is not None and residue.is_acidic:
+                        pka = 0.0
+                    elif residue is not None and residue.is_basic:
+                        pka = 14.0
+                    else:
+                        skipped_pka_lines += 1
+                        logger.debug(
+                            "Skipping non-numeric pKa for non-acid/basic residue %s: %s",
+                            residue_id,
+                            line.rstrip(),
+                        )
+                        continue
+
+                pka_by_id[residue_id] = pka
+
+                pka_lines += 1
+                pka_values_loaded += 1
+
+        logger.info(
+            "Loaded pKa values for %d residues from %s",
+            pka_values_loaded,
+            pka_file,
+        )
+
+        # ------------------------------------------------------------
+        # Apply properties to residues
+        # ------------------------------------------------------------
+        charge_assigned = 0
+        sasa_assigned = 0
+        pka_assigned = 0
+
+        missing_charge = 0
+        missing_sasa = 0
+        missing_pka = 0
+
+        for residue in self.residues:
+
+            if residue.residue_id in charge_by_id:
+                residue.charge = charge_by_id[residue.residue_id]
+                charge_assigned += 1
+            else:
+                missing_charge += 1
+
+            # We need to be flexible in matching residue IDs for SASA, allowing for different naming conventions or aliases, 
+            matched_id = None
+
+            if residue.residue_id in sasa_by_id:
+                matched_id = residue.residue_id
+
+            else:
+                res_name, res_num = residue.residue_id.split("_", 1)
+
+                for canonical_name, aliases in RESIDUE_ALIASES.items():
+
+                    if res_name in aliases:
+
+                        for alias in aliases:
+
+                            alias_id = f"{alias}_{res_num}"
+
+                            if alias_id in sasa_by_id:
+                                matched_id = alias_id
+                                break
+
+                    if matched_id is not None:
+                        break
+
+            if matched_id is not None:
+                residue.sasa, residue.sasa_fraction = sasa_by_id[matched_id]
+                sasa_assigned += 1
+            else:
+                missing_sasa += 1
+                logger.info(
+                    "Missing SASA for residue %s; setting to 0",
+                    residue.residue_id,
+                )
+                residue.sasa = 0.0
+                residue.sasa_fraction = 0.0
+
+            if residue.residue_id in pka_by_id:
+                residue.pka = pka_by_id[residue.residue_id]
+                pka_assigned += 1
+            else:
+                missing_pka += 1
+
+        logger.info(
+            (
+                "Residue property initialization summary: "
+                "residues=%d, "
+                "charge_assigned=%d, sasa_assigned=%d, pka_assigned=%d, "
+                "missing_charge=%d, missing_sasa=%d, missing_pka=%d, "
+                "skipped_charge_lines=%d, skipped_sasa_lines=%d, skipped_pka_lines=%d, "
+                "non_numeric_pka=%d"
+            ),
+            len(self.residues),
+            charge_assigned,
+            sasa_assigned,
+            pka_assigned,
+            missing_charge,
+            missing_sasa,
+            missing_pka,
+            skipped_charge_lines,
+            skipped_sasa_lines,
+            skipped_pka_lines,
+            non_numeric_pka_count,
+        )

@@ -42,3 +42,28 @@ The proposed electrostatic features are:
 - surface_charge_dipole_magnitude
 - all_charge_dipole_normalized
 - surface_charge_dipole_normalized
+
+## Quick Start
+
+### Installation
+1. Clone the repository
+```
+git clone https://github.com/pclass-lab/elefeatures.git
+```
+
+2. Install in Editable (Development) Mode
+Editable installs allow you to modify the code and immediately test changes.
+
+```
+pip install -e .
+```
+After this, the CLI entry point will be available:
+
+```
+mcce-features
+```
+
+To extract features from an MCCE folder
+```
+mcce-features extract <folder_name>
+```
