@@ -252,9 +252,6 @@ class MCCEFeatureExtractor:
                     )
                     isoelectric_point = ph_values[min_abs_index]
 
-        features["net_charge"] = float(net_charge)
-        features["isoelectric_point"] = float(isoelectric_point)
-
 
         # ------------------------------------------------------------
         # Composition fractions
@@ -305,9 +302,11 @@ class MCCEFeatureExtractor:
 
         return features
 
+
     def extract_pka_purturbation_features(self) -> Dict[str, float]:
         """
-        Extract pKa perturbation features based on the difference between intrinsic pKa and pKa in the protein environment.
+        Extract pKa perturbation features based on the difference between
+        intrinsic pKa and pKa in the protein environment.
 
         Features:
             - acid_big_pka_shift_fraction_all_residues
@@ -316,9 +315,11 @@ class MCCEFeatureExtractor:
             - base_big_pka_shift_fraction_bases_only
             - mean_abs_pka_shift
             - max_abs_pka_shift
+
         Returns:
             Dictionary mapping feature names to float values.
         """
+
         logger = logging.getLogger(__name__)
         big_shift_threshold = 1.0
         features = {}
@@ -335,8 +336,88 @@ class MCCEFeatureExtractor:
                 "max_abs_pka_shift": 0.0,
             }
 
-        return features
+        total_residues = len(self.residues)
 
+        acidic_residues = [
+            residue for residue in self.residues
+            if residue.is_acidic
+        ]
+
+        basic_residues = [
+            residue for residue in self.residues
+            if residue.is_basic
+        ]
+
+        titratable_residues = acidic_residues + basic_residues
+
+        pka_shifts = []
+        acid_big_shift_count = 0
+        base_big_shift_count = 0
+
+        for residue in titratable_residues:
+            pka_shift = residue.pka - residue.pka0
+            abs_pka_shift = abs(pka_shift)
+
+            pka_shifts.append(abs_pka_shift)
+
+            if abs_pka_shift >= big_shift_threshold:
+                if residue.is_acidic:
+                    acid_big_shift_count += 1
+                elif residue.is_basic:
+                    base_big_shift_count += 1
+
+        acid_count = len(acidic_residues)
+        base_count = len(basic_residues)
+
+        features["acid_big_pka_shift_fraction_all_residues"] = (
+            acid_big_shift_count / total_residues
+        )
+
+        features["base_big_pka_shift_fraction_all_residues"] = (
+            base_big_shift_count / total_residues
+        )
+
+        features["acid_big_pka_shift_fraction_acids_only"] = (
+            acid_big_shift_count / acid_count
+            if acid_count > 0
+            else 0.0
+        )
+
+        features["base_big_pka_shift_fraction_bases_only"] = (
+            base_big_shift_count / base_count
+            if base_count > 0
+            else 0.0
+        )
+
+        features["mean_abs_pka_shift"] = (
+            float(np.mean(pka_shifts))
+            if pka_shifts
+            else 0.0
+        )
+
+        features["max_abs_pka_shift"] = (
+            float(np.max(pka_shifts))
+            if pka_shifts
+            else 0.0
+        )
+
+        logger.info(
+            (
+                "pKa perturbation features: "
+                "residues=%d, acids=%d, bases=%d, "
+                "acid_big_shift=%d, base_big_shift=%d, "
+                "mean_abs_shift=%.3f, max_abs_shift=%.3f"
+            ),
+            total_residues,
+            acid_count,
+            base_count,
+            acid_big_shift_count,
+            base_big_shift_count,
+            features["mean_abs_pka_shift"],
+            features["max_abs_pka_shift"],
+        )
+
+        return features
 
 
     def extract_all_features(self, folder: Optional[str] = None) -> List[float]:
