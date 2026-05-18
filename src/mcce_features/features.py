@@ -303,7 +303,7 @@ class MCCEFeatureExtractor:
         return features
 
 
-    def extract_pka_purturbation_features(self) -> Dict[str, float]:
+    def extract_pka_perturbation_features(self) -> Dict[str, float]:
         """
         Extract pKa perturbation features based on the difference between
         intrinsic pKa and pKa in the protein environment.
@@ -361,6 +361,7 @@ class MCCEFeatureExtractor:
             pka_shifts.append(abs_pka_shift)
 
             if abs_pka_shift >= big_shift_threshold:
+                logger.info(f"Large pKa shift found for residue {residue.residue_id}: abs_pka_shift {abs_pka_shift:.3f} = |pKa {residue.pka:.3f} - pKa0 {residue.pka0:.3f}|")
                 if residue.is_acidic:
                     acid_big_shift_count += 1
                 elif residue.is_basic:
@@ -439,7 +440,7 @@ class MCCEFeatureExtractor:
 
         self.features = {}
         self.features.update(self.extract_composition_features())
-        self.features.update(self.extract_pka_purturbation_features())
+        self.features.update(self.extract_pka_perturbation_features())
 
         return list(self.features.values())
     
@@ -859,6 +860,12 @@ class MCCEFeatureExtractor:
             pka_values_loaded,
             pka_file,
         )
+
+        # ------------------------------------------------------------
+        # Addign pKa0 values to residues based on their type
+        # ------------------------------------------------------------
+        for residue in self.residues:
+            residue.pka0 = PK0_VALUES.get(residue.name, 0.0)
 
         # ------------------------------------------------------------
         # Apply properties to residues
