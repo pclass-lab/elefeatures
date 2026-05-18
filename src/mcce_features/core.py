@@ -26,10 +26,6 @@ def extract(mcce_folder: str,
 
     return feature_names, features
 
-from pathlib import Path
-import csv
-import logging
-
 
 def extract_folders(
     folder_file: str,
