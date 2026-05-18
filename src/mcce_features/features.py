@@ -460,7 +460,7 @@ class MCCEFeatureExtractor:
 
         surface_residues = [
             residue for residue in self.residues
-            if getattr(residue, "sasa_fraction", 0.0) is not None
+            if residue.sasa_fraction is not None
             and residue.sasa_fraction > surface_sasa_percentage_threshold
         ]
 
