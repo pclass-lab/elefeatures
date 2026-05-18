@@ -106,6 +106,96 @@ class Residue:
         self.anchor_point = np.zeros(3)     # 3D coordinates of the anchor point for the residue, placeholder value
 
 
+def _identify_patches(residues):
+    """
+    Identify electrostatic charge patches by grouping spatially connected
+    same-sign charged residues.
+
+    Input:
+        residues: list of Residue objects with:
+            - residue.charge
+            - residue.anchor_point
+
+    Returns:
+        (
+            positive_patches,
+            negative_patches,
+        )
+
+        where each patch is a list of residues.
+    """
+    logger = logging.getLogger(__name__)
+
+    neighbor_distance_threshold = 10.0
+    net_charge_threshold = 0.25
+
+    positive_patches = []
+    negative_patches = []
+
+    def distance(r1, r2):
+        p1 = np.asarray(r1.anchor_point, dtype=float)
+        p2 = np.asarray(r2.anchor_point, dtype=float)
+        return np.linalg.norm(p1 - p2)
+
+    def build_patches(charged_residues):
+        patches = []
+        visited = set()
+
+        for residue in charged_residues:
+
+            if id(residue) in visited:
+                continue
+
+            patch = []
+            stack = [residue]
+            visited.add(id(residue))
+
+            while stack:
+                current = stack.pop()
+                patch.append(current)
+
+                for neighbor in charged_residues:
+
+                    if id(neighbor) in visited:
+                        continue
+
+                    if (
+                        distance(current, neighbor)
+                        <= neighbor_distance_threshold
+                    ):
+                        visited.add(id(neighbor))
+                        stack.append(neighbor)
+
+            patches.append(patch)
+
+        return patches
+
+    positive_residues = []
+    negative_residues = []
+
+    for residue in residues:
+
+        charge = getattr(residue, "charge", 0.0)
+        anchor = getattr(residue, "anchor_point", None)
+
+        if charge is None or anchor is None:
+            continue
+
+        if charge > net_charge_threshold:
+            positive_residues.append(residue)
+
+        elif charge < -net_charge_threshold:
+            negative_residues.append(residue)
+
+    if not positive_residues and not negative_residues:
+        logger.warning("No significantly charged residues found for patch detection")
+
+    positive_patches = build_patches(positive_residues)
+    negative_patches = build_patches(negative_residues)
+
+    return positive_patches, negative_patches
+
+
 class MCCEFeatureExtractor:
     """
     A feature extractor for MCCE output files.
@@ -134,6 +224,13 @@ class MCCEFeatureExtractor:
             "surface_acid_to_base_ratio",
             "surface_positive_charge_density",
             "surface_negative_charge_density",
+
+            "largest_positive_patch_area",
+            "largest_negative_patch_area",
+            "largest_positive_patch_charge",
+            "largest_negative_patch_charge",
+            "largest_positive_patch_density",
+            "largest_negative_patch_density",
 
         ]
 
@@ -534,6 +631,7 @@ class MCCEFeatureExtractor:
         features.update(self.extract_composition_features())
         features.update(self.extract_pka_perturbation_features())
         features.update(self.extract_surface_charge_features())
+        features.update(self.extract_patch_localization_features())
 
         # Guardrail 1: missing registered features
         missing = set(self.feature_names) - set(features)
@@ -1054,3 +1152,115 @@ class MCCEFeatureExtractor:
             skipped_pka_lines,
             non_numeric_pka_count,
         )
+
+    def extract_patch_localization_features(self) -> Dict[str, float]:
+        """
+        Extract features related to the localization of charged patches on the protein surface.
+
+        Features:
+        - largest_positive_patch_area
+        - largest_negative_patch_area
+        - largest_positive_patch_charge
+        - largest_negative_patch_charge
+        - largest_positive_patch_density
+        - largest_negative_patch_density
+
+        Notes:
+        Patch density is defined as total charge in the patch divided by the solvent-accessible surface area of the patch.
+        positive and negative patches contain residues with positive and negative charge.
+
+        Returns:
+            Dictionary mapping feature names to float values.
+        """
+        logger = logging.getLogger(__name__)
+        features = {}
+        positive_patches, negative_patches = _identify_patches(self.residues)
+
+        return features
+    
+    def extract_patch_localization_features(self) -> Dict[str, float]:
+        """
+        Extract features related to the localization of charged patches on the protein surface.
+
+        Features:
+        - largest_positive_patch_area
+        - largest_negative_patch_area
+        - largest_positive_patch_charge
+        - largest_negative_patch_charge
+        - largest_positive_patch_density
+        - largest_negative_patch_density
+
+        Notes:
+        Patch density is defined as total charge in the patch divided by the solvent-accessible surface area of the patch.
+        positive and negative patches contain residues with positive and negative charge.
+
+        Returns:
+            Dictionary mapping feature names to float values.
+        """
+
+        logger = logging.getLogger(__name__)
+        sasa_pseudocount = 1e-6
+
+        features = {
+            "largest_positive_patch_area": 0.0,
+            "largest_negative_patch_area": 0.0,
+            "largest_positive_patch_charge": 0.0,
+            "largest_negative_patch_charge": 0.0,
+            "largest_positive_patch_density": 0.0,
+            "largest_negative_patch_density": 0.0,
+        }
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero patch localization features")
+            return features
+
+        positive_patches, negative_patches = _identify_patches(self.residues)
+
+        def summarize_largest_patch(patches, use_abs_charge: bool = False):
+            """
+            Return area, charge, and density for the largest patch by SASA area.
+            """
+            if not patches:
+                return 0.0, 0.0, 0.0
+
+            def patch_area(patch):
+                return sum(getattr(residue, "sasa", 0.0) or 0.0 for residue in patch)
+
+            largest_patch = max(patches, key=patch_area)
+
+            area = patch_area(largest_patch)
+            charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in largest_patch)
+
+            if use_abs_charge:
+                charge_for_density = abs(charge)
+            else:
+                charge_for_density = charge
+
+            density = charge_for_density / (area + sasa_pseudocount)
+
+            return area, charge, density
+
+        (
+            largest_positive_patch_area,
+            largest_positive_patch_charge,
+            largest_positive_patch_density,
+        ) = summarize_largest_patch(positive_patches)
+
+        (
+            largest_negative_patch_area,
+            largest_negative_patch_charge,
+            largest_negative_patch_density,
+        ) = summarize_largest_patch(negative_patches)
+
+        features.update(
+            {
+                "largest_positive_patch_area": largest_positive_patch_area,
+                "largest_negative_patch_area": largest_negative_patch_area,
+                "largest_positive_patch_charge": largest_positive_patch_charge,
+                "largest_negative_patch_charge": largest_negative_patch_charge,
+                "largest_positive_patch_density": largest_positive_patch_density,
+                "largest_negative_patch_density": largest_negative_patch_density,
+            }
+        )
+
+        return features
