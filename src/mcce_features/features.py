@@ -3,11 +3,13 @@ MCCE Feature Extractor
 This module contains the core logic for extracting electrostatic features from MCCE output files.
 
 """
+from collections import OrderedDict
 import logging
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import numpy as np
-from typing import Dict, List, Optional
-from collections import OrderedDict
+
 
 ACIDS = {"ASP", "GLU", "CTR"}
 BASES = {"LYS", "ARG", "HIS", "NTR", "NTG"}
@@ -761,7 +763,10 @@ class MCCEFeatureExtractor:
         self.load_protein_structure()
 
         logger.debug(f"Initialize residue properties from MCCE output ...")
-        self.initialize_residue_properties()
+        init_ok = self.initialize_residue_properties()
+        if not init_ok:
+            logger.critical("At least one file among sum_crg.out, acc.res or pK.out is missing")
+            return {}
 
         features = {}
         features.update(self.extract_composition_features())
@@ -794,6 +799,10 @@ class MCCEFeatureExtractor:
         """Parse step1_out.pdb and extract residues, atoms, and anchor points."""
 
         logger = logging.getLogger(__name__)
+
+        if not Path(pdb_file).exists():
+            logger.critical("Not found: step1_out.pdb in %s", self.mcce_folder)
+            return []
 
         logger.debug("Parsing step1_out.pdb: %s", pdb_file)
 
@@ -979,15 +988,23 @@ class MCCEFeatureExtractor:
 
         return residues
     
-    def initialize_residue_properties(self):
-        """Initialize residue charge, SASA, SASA fraction, and pKa from MCCE output files."""
+    def initialize_residue_properties(self) -> bool:
+        """Initialize residue charge, SASA, SASA fraction,
+        and pKa from MCCE output files.
+        Returns a boolean indicating success or failure of the
+        initialization.
+        """
 
         logger = logging.getLogger(__name__)
 
         sum_charge_file = f"{self.mcce_folder}/sum_crg.out"
         sasa_file = f"{self.mcce_folder}/acc.res"
         pka_file = f"{self.mcce_folder}/pK.out"
-
+        if not (Path(sum_charge_file).exists()
+                or Path(sasa_file).exists()
+                or Path(pka_file).exists()):
+            return False
+        
         logger.debug("Initializing residue properties from MCCE output files")
         logger.debug("Charge file: %s", sum_charge_file)
         logger.debug("SASA file:   %s", sasa_file)

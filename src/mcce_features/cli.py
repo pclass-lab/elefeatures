@@ -1,7 +1,9 @@
+from importlib.metadata import version, PackageNotFoundError, metadata
 import logging
 import typer
-from importlib.metadata import version, PackageNotFoundError, metadata
+
 from . import core
+
 
 try:
     __version__ = version("mcce-features")
@@ -19,7 +21,7 @@ def print_version():
 
 
 app = typer.Typer(
-    help="mcce-features: extract electrostatic features from MCCE output files or other sources.",
+    help="mcce-features: Extract electrostatic features from MCCE output files or other sources.",
     context_settings={"help_option_names": ["-h", "--help"]},
     no_args_is_help=True
 )
@@ -69,8 +71,13 @@ def extract(
 
 @app.command("extract-folders")
 def extract_folders_cmd(
-    folder_file: str = typer.Argument(..., help="Path to a text file containing MCCE folder paths (one per line)."),
-    output_file: str = typer.Option("mcce_elefeatures.tsv", help="Path to the output TSV file.")
+    folder_file: str = typer.Argument(
+        ...,
+        help=("Path to a (space, comma, tab) delimited file with a "
+              "MCCE folder path/str in the first column of each line.")
+                                      ),
+    output_file: str = typer.Option("mcce_elefeatures.tsv",
+                                    help="Path to the output TSV file.")
 ):
     """Extract electrostatic features from multiple MCCE folders."""
     core.extract_folders(folder_file, output_file)
