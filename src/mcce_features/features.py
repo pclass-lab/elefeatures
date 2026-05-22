@@ -616,26 +616,21 @@ class MCCEFeatureExtractor:
         }
 
 
-    def extract_all_features(self, folder: Optional[str] = None) -> List[float]:
+    def extract_all_features(self, folder: str) -> List[float]:
         """
         Extract all electrostatic features from the MCCE output files in the specified folder.
 
         Returns:
             A list of floats representing the extracted features, ordered by feature names.
         """
-        if folder is not None:
-            self.mcce_folder = folder
+        self.mcce_folder = folder
 
         logger = logging.getLogger(__name__)
         logger.debug(f"Extracting features from MCCE folder: {self.mcce_folder}")
         self.load_protein_structure()
 
         logger.debug(f"Initialize residue properties from MCCE output ...")
-        init_ok = self.initialize_residue_properties()
-        if not init_ok:
-            logger.critical("At least one file among sum_crg.out, acc.res or pK.out is missing")
-            return {}
-
+        self.initialize_residue_properties()
         features = {}
         features.update(self.extract_composition_features())
         features.update(self.extract_pka_perturbation_features())
@@ -855,11 +850,9 @@ class MCCEFeatureExtractor:
 
         return residues
     
-    def initialize_residue_properties(self) -> bool:
+    def initialize_residue_properties(self):
         """Initialize residue charge, SASA, SASA fraction,
         and pKa from MCCE output files.
-        Returns a boolean indicating success or failure of the
-        initialization.
         """
 
         logger = logging.getLogger(__name__)
@@ -867,10 +860,6 @@ class MCCEFeatureExtractor:
         sum_charge_file = f"{self.mcce_folder}/sum_crg.out"
         sasa_file = f"{self.mcce_folder}/acc.res"
         pka_file = f"{self.mcce_folder}/pK.out"
-        if not (Path(sum_charge_file).exists()
-                or Path(sasa_file).exists()
-                or Path(pka_file).exists()):
-            return False
         
         logger.debug("Initializing residue properties from MCCE output files")
         logger.debug("Charge file: %s", sum_charge_file)
