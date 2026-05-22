@@ -764,9 +764,9 @@ class MCCEFeatureExtractor:
 
         logger.debug(f"Initialize residue properties from MCCE output ...")
         init_ok = self.initialize_residue_properties()
-        if not init_ok:
-            logger.critical("At least one file among sum_crg.out, acc.res or pK.out is missing")
-            return {}
+        # if not init_ok:
+        #     logger.critical("At least one file among sum_crg.out, acc.res or pK.out is missing")
+        #     return {}
 
         features = {}
         features.update(self.extract_composition_features())
