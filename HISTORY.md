@@ -49,11 +49,12 @@ Added support for extracting:
 - largest_positive_patch_density
 - largest_negative_patch_density
 
-#### Charge Assymetry (4)
-- all_charge_dipole_magnitude
-- surface_charge_dipole_magnitude
-- all_charge_dipole_normalized
-- surface_charge_dipole_normalized
+#### Charge Asymmetry (5)
+- all_charge_spatial_moment_magnitude
+- surface_charge_spatial_moment_magnitude
+- all_charge_spatial_moment_normalized
+- surface_charge_spatial_moment_normalized
+- charge_separation_magnitude
 
 ### Internal Improvements
 
