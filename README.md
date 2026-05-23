@@ -44,7 +44,7 @@ The proposed electrostatic features are:
 - surface_charge_spatial_moment_normalized
 
 **Dipole as charge separation (1)**
-- 
+- charge_separation_magnitude
 
 ## Quick Start
 
