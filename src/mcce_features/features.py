@@ -779,8 +779,10 @@ class MCCEFeatureExtractor:
             raise ValueError(f"Unregistered features: {sorted(extra)}")
 
         # The list order is now guaranteed by feature_names
-        return [features[name] for name in self.feature_names]
-
+        return [
+            float(f"{v:.3g}") if abs(v) < 1.0 else round(v, 3)
+            for v in (features[name] for name in self.feature_names)
+        ]
     
     def load_protein_structure(self):
         """Load the protein structure from MCCE output files."""
