@@ -636,9 +636,6 @@ class MCCEFeatureExtractor:
             - More biologically interpretable than strict physics dipole
             for proteins with net charge
         """
-        import logging
-        import numpy as np
-
         logger = logging.getLogger(__name__)
 
         charge_separation_magnitude = 0.0
