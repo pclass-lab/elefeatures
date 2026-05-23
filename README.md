@@ -37,11 +37,14 @@ The proposed electrostatic features are:
 - largest_positive_patch_density
 - largest_negative_patch_density
 
-**Charge Assymetry (4)**
-- all_charge_dipole_magnitude
-- surface_charge_dipole_magnitude
-- all_charge_dipole_normalized
-- surface_charge_dipole_normalized
+**Charge Asymmetry as spatial moment (4)**
+- all_charge_spatial_moment_magnitude
+- surface_charge_spatial_moment_magnitude
+- all_charge_spatial_moment_normalized
+- surface_charge_spatial_moment_normalized
+
+**Dipole as charge separation (1)**
+- charge_separation_magnitude
 
 ## Quick Start
 

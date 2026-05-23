@@ -234,10 +234,12 @@ class MCCEFeatureExtractor:
             "largest_positive_patch_density",
             "largest_negative_patch_density",
 
-            "all_charge_dipole_magnitude",
-            "surface_charge_dipole_magnitude",
-            "all_charge_dipole_normalized",
-            "surface_charge_dipole_normalized",
+            "all_charge_spatial_moment_magnitude",
+            "surface_charge_spatial_moment_magnitude",
+            "all_charge_spatial_moment_normalized",
+            "surface_charge_spatial_moment_normalized",
+
+            "charge_separation_magnitude",
         ]
 
 
@@ -615,6 +617,133 @@ class MCCEFeatureExtractor:
             "surface_negative_charge_density": surface_negative_charge_density,
         }
 
+    def extract_dipole_features(self) -> Dict[str, float]:
+        """
+        Extract charge-separation-based dipole features.
+
+        Method:
+            1. Compute positive and negative charge centroids
+            2. Compute separation vector between centroids
+            3. Scale by effective charge
+
+        Feature:
+            charge_separation_magnitude
+
+        Notes:
+            - Uses residue.anchor_point as coordinates
+            - Uses residue.charge as charge
+            - Neutral or one-sided systems return 0
+            - More biologically interpretable than strict physics dipole
+            for proteins with net charge
+        """
+        logger = logging.getLogger(__name__)
+
+        charge_separation_magnitude = 0.0
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero dipole features")
+
+            return {
+                "charge_separation_magnitude": 0.0
+            }
+
+        positive_coords = []
+        positive_charges = []
+
+        negative_coords = []
+        negative_charges = []
+
+        # ---------------------------------------------------------
+        # Collect positive and negative charges separately
+        # ---------------------------------------------------------
+        for residue in self.residues:
+
+            q = getattr(residue, "charge", 0.0)
+
+            if q == 0:
+                continue
+
+            anchor = getattr(residue, "anchor_point", None)
+
+            if anchor is None:
+                continue
+
+            r = np.asarray(anchor, dtype=float)
+
+            if r.shape != (3,):
+                logger.warning(
+                    "Invalid anchor point shape for residue %s: %s",
+                    getattr(residue, "resid", "?"),
+                    r.shape,
+                )
+                continue
+
+            if q > 0:
+                positive_coords.append(r)
+                positive_charges.append(q)
+
+            else:
+                negative_coords.append(r)
+                negative_charges.append(abs(q))
+
+        # ---------------------------------------------------------
+        # Need BOTH positive and negative charges
+        # ---------------------------------------------------------
+        if not positive_coords or not negative_coords:
+
+            return {
+                "charge_separation_magnitude": 0.0
+            }
+
+        positive_coords = np.asarray(positive_coords)
+        positive_charges = np.asarray(positive_charges)
+
+        negative_coords = np.asarray(negative_coords)
+        negative_charges = np.asarray(negative_charges)
+
+        # ---------------------------------------------------------
+        # Weighted charge centroids
+        # ---------------------------------------------------------
+        r_plus = np.average(
+            positive_coords,
+            axis=0,
+            weights=positive_charges
+        )
+
+        r_minus = np.average(
+            negative_coords,
+            axis=0,
+            weights=negative_charges
+        )
+
+        # ---------------------------------------------------------
+        # Separation vector
+        # ---------------------------------------------------------
+        separation_vector = r_plus - r_minus
+
+        separation_distance = np.linalg.norm(separation_vector)
+
+        # ---------------------------------------------------------
+        # Effective charge
+        #
+        # Using min(Q+, Q-) avoids inflation in highly charged proteins
+        # ---------------------------------------------------------
+        q_plus = positive_charges.sum()
+        q_minus = negative_charges.sum()
+
+        q_eff = min(q_plus, q_minus)
+
+        # ---------------------------------------------------------
+        # Charge separation magnitude
+        # ---------------------------------------------------------
+        charge_separation_magnitude = q_eff * separation_distance
+
+        return {
+            "charge_separation_magnitude": float(
+                charge_separation_magnitude
+            )
+        }
+
 
     def extract_all_features(self, folder: str) -> List[float]:
         """
@@ -637,6 +766,7 @@ class MCCEFeatureExtractor:
         features.update(self.extract_surface_charge_features())
         features.update(self.extract_patch_localization_features())
         features.update(self.extract_asymmetry_features())
+        features.update(self.extract_dipole_features())
 
         # Guardrail 1: missing registered features
         missing = set(self.feature_names) - set(features)
@@ -1284,10 +1414,10 @@ class MCCEFeatureExtractor:
         pseudocount = 1e-6
 
         features = {
-            "all_charge_dipole_magnitude": 0.0,
-            "surface_charge_dipole_magnitude": 0.0,
-            "all_charge_dipole_normalized": 0.0,
-            "surface_charge_dipole_normalized": 0.0,
+            "all_charge_spatial_moment_magnitude": 0.0,
+            "surface_charge_spatial_moment_magnitude": 0.0,
+            "all_charge_spatial_moment_normalized": 0.0,
+            "surface_charge_spatial_moment_normalized": 0.0,
         }
 
         if not self.residues:
@@ -1352,13 +1482,13 @@ class MCCEFeatureExtractor:
         ]
 
         (
-            features["all_charge_dipole_magnitude"],
-            features["all_charge_dipole_normalized"],
+            features["all_charge_spatial_moment_magnitude"],
+            features["all_charge_spatial_moment_normalized"],
         ) = calculate_dipole_features(all_residues)
 
         (
-            features["surface_charge_dipole_magnitude"],
-            features["surface_charge_dipole_normalized"],
+            features["surface_charge_spatial_moment_magnitude"],
+            features["surface_charge_spatial_moment_normalized"],
         ) = calculate_dipole_features(surface_residues)
 
         return features
