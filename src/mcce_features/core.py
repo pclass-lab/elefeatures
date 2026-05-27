@@ -2,10 +2,15 @@
 Implementation of core functionalities for the mcce-features package.
 """
 import csv
+from functools import partial
 import logging
 from pathlib import Path
 from re import split as re_split
+from typing import Union
 
+from numpy import float32 as np_float32
+from numpy import number as np_number
+import pandas as pd
 from rich.traceback import install
 
 from .features import MCCEFeatureExtractor
@@ -14,16 +19,23 @@ from .features import MCCEFeatureExtractor
 # Configure rich to render tracebacks for cleaner CLI output without modifying click globals
 install(show_locals=False)
 
+read_tsv = partial(pd.read_csv, sep="\t")
 
+FEATURES_TSV = "mcce_elefeatures.tsv"
 BOOK_HEADER_LINES = 3
 BOOK_FOOTER_LINES = 5
 
 
 def extract(mcce_folder: str,
-            verbose: bool = True):
+            verbose: bool = True) -> tuple:
     """Extract electrostatic features from MCCE output files in the specified folder."""
     logging.info(f"Starting feature extraction from MCCE folder: {mcce_folder}")
+
     extractor = MCCEFeatureExtractor()
+    extractor.mcce_folder = mcce_folder
+    if extractor.missing_sources():
+        logging.critical("At least one required source file is missing.")
+        return None, None
     features = extractor.extract_all_features(folder=mcce_folder)
     feature_names = extractor.feature_names
     if verbose:
@@ -57,7 +69,7 @@ def get_book_data_bounds(book_fp: Path) -> tuple:
 
 def extract_folders(
     folder_file: str,
-    output_file: str = "mcce_elefeatures.tsv",
+    output_file: str = FEATURES_TSV,
 ):
     """
     Extract electrostatic features from multiple MCCE folders.
@@ -72,52 +84,148 @@ def extract_folders(
         TSV file with columns:
             mcce_folder, feature_1, feature_2, ...
     """
-    folders_fp = Path(folder_file)
+    folders_fp = Path(folder_file).resolve()
+    book_parent = folders_fp.parent
+
     is_book = folders_fp.name == "book.txt"
     other_book = False
     if is_book:
         l1, l2 = get_book_data_bounds(folders_fp)
-        if l1 is None:  # book not from pro_batch
-            other_book = True
+        other_book = l1 is None  # book not from pro_batch
 
     if not is_book or other_book:
-        folder_paths = [
-            re_split(r"[ ,\t]+", line)[0]
-            for line in folders_fp.read_text().splitlines()
-            if line.strip() and not line.strip().startswith("#")
-        ]       
+        lines = folders_fp.read_text().splitlines()
     else:
-        folder_paths = [
-            re_split(r"[ ,\t]+", line)[0]
-            for line in folders_fp.read_text().splitlines()[l1:l2]
-            if line.strip() and not line.strip().startswith("#")
-        ]
+        lines = folders_fp.read_text().splitlines()[l1:l2]
+    folder_paths = [book_parent.joinpath(re_split(r"[ ,\t]+", line)[0])
+                    for line in lines
+                    if line.strip() and not line.strip().startswith("#")
+                    ]
 
     if not folder_paths:
-        raise ValueError(f"No folders found in {folder_file}")
+        raise ValueError(f"No folders found in {folders_fp.parent}")
 
-    logging.info(f"Found {len(folder_paths)} MCCE folders to process")
+    logging.info(f"Found {len(folder_paths)} MCCE folders to process in {folders_fp.parent}")
 
     header_written = False
-
     with open(output_file, "w", newline="") as fout:
         writer = None
 
         for i, mcce_folder in enumerate(folder_paths, start=1):
             logging.info(f"[{i:,}/{len(folder_paths):,}] Processing {mcce_folder}")
-
             try:
                 feature_names, features = extract(mcce_folder, verbose=False)
-
-                if not header_written:
-                    writer = csv.writer(fout, delimiter="\t")
-                    writer.writerow(["mcce_folder"] + list(feature_names))
-                    header_written = True
-
-                writer.writerow([mcce_folder] + list(features))
-
+                if feature_names is not None:
+                    if not header_written:
+                        writer = csv.writer(fout, delimiter="\t")
+                        writer.writerow(["mcce_folder"] + list(feature_names))
+                        header_written = True
+                    writer.writerow([mcce_folder.name] + list(features))
             except Exception as exc:
                 logging.exception(f"Failed to process {mcce_folder}: {exc}")
                 continue
 
-    logging.info(f"Wrote feature table to {output_file}")
+    logging.info(f"Wrote feature table to {output_file}\n")
+
+    return
+
+
+def get_sims_dirs(sims_dir: str=".") -> list:
+    """Get the list of subfolders paths with a book file.
+    """
+    dirs_lst = []
+    for dir in Path(sims_dir).iterdir():
+        if not dir.is_dir():
+            continue
+        if (dir/"runs").is_dir():
+            if (dir/"runs"/"book.txt").exists():
+                dirs_lst.append(dir/"runs"/"book.txt")
+        elif (dir/"book.txt").exists():
+            dirs_lst.append(dir/"book.txt")
+        
+    return dirs_lst
+
+
+def collate_features_files(sims_dir: Union[str,Path],
+                           tsv_lst: list):
+    """Collate all features files in tsv_lst that have data
+    into sims_dir/mcce_elefeatures.tsv.
+    """
+    dfs = []
+    for tsv in tsv_lst:
+        if isinstance(tsv, Path) and tsv.exists():
+            try:
+                df = read_tsv(tsv)
+            except pd.errors.EmptyDataError:
+                continue
+            logging.info(f">> Collating {tsv!s}")
+            dfs.append(df)
+
+    if not dfs:
+        logging.warning("No feature dataframes found to collate.")
+        return
+
+    cdf = pd.concat(dfs)
+    # cdf = cdf.dropna()  # apply?
+    # get average of duplicates:
+    cdf = cdf.groupby("mcce_folder", as_index=False).mean()
+    num_cols = cdf.select_dtypes(include=[np_number]).columns
+    cdf[num_cols] = cdf[num_cols].astype(np_float32)
+    out_path = Path(sims_dir)/FEATURES_TSV
+    cdf.to_csv(out_path, sep="\t", index=False)
+    logging.info(f"Collated features into {out_path}")
+
+    return
+
+
+def extract_subfolders_with_book(sims_dir: str=".",
+                                 output_file: str = FEATURES_TSV):
+    """
+    Run extract_folders in all subfolders of a set of simulations 
+    folders (sims_dir) that have a book.txt file.
+    Expected sim_dir subfolders' structure:
+        sim1_dir/
+          - [runs/]  #prot folders may be under runs/; used if found
+          - PDB1/
+          - PDB2/
+          ...
+          - [book.txt]
+        sim2_dir/
+         [same as above]
+
+    1. Get all the dirs with book.txt
+    2. Run extract_folders(book_fp)
+    3. Collate all mcce_elefeatures.tsv files
+    """
+    # list of book filepaths:
+    dirs_lst = get_sims_dirs(sims_dir=sims_dir)
+    if not dirs_lst:
+        msg = f"{Path(sims_dir).resolve().name}: No subfolders with a book.txt file."
+        logging.info(msg)
+        return
+    
+    tsv_lst = []
+    for book_fp in dirs_lst:
+        tsv_fp = book_fp.parent/FEATURES_TSV
+        extract_folders(book_fp, tsv_fp)
+    
+        if tsv_fp.exists():
+            tsv_lst.append(tsv_fp)
+        else:
+            if book_fp.parent.name=="runs":
+                missing_tsv = f"{book_fp.parent.parent.name}/runs"
+            else:
+                missing_tsv = book_fp.parent.name
+            tsv_lst.append(f"# {missing_tsv}: No features tsv file.")
+    
+    if tsv_lst:
+        # save list
+        feats_files_fp = Path(sims_dir).joinpath("features_filepaths.txt")
+        with open(feats_files_fp, "w") as fh:
+            fh.write("\n".join(f"{tsv!s}" for tsv in tsv_lst) + "\n")
+
+        collate_features_files(sims_dir, tsv_lst)
+    else:
+        logging.warning("No features files found.")
+
+    return
