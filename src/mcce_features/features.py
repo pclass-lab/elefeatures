@@ -1,12 +1,12 @@
 """
 MCCE Feature Extractor
-This module contains the core logic for extracting electrostatic features from MCCE output files.
-
+This module contains the core logic for extracting electrostatic features from several
+MCCE output files (listed in SOURCE_FILES).
 """
 from collections import OrderedDict
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -42,7 +42,6 @@ PK0_VALUES = {
 # - glycines -> CA fallback
 
 ANCHOR_ATOM_NAMES = {
-
     # Charged acidic
     "ASP": ["OD1", "OD2"],
     "GLU": ["OE1", "OE2"],
@@ -86,6 +85,14 @@ ANCHOR_ATOM_NAMES = {
     "CTR": ["O", "OXT"],     # midpoint of terminal oxygens
 }
 
+
+SOURCE_FILES = [
+    "step1_out.pdb",
+    "acc.res",
+    "sum_crg.out",
+    "pK.out",
+]
+
 class Atom:
     """A class representing an atom in the protein structure."""
     def __init__(self):
@@ -108,7 +115,7 @@ class Residue:
         self.anchor_point = np.zeros(3)     # 3D coordinates of the anchor point for the residue, placeholder value
 
 
-def _identify_patches(residues):
+def _identify_patches(residues: List[Residue]) -> Tuple[List[str], List[str]]:
     """
     Identify electrostatic charge patches by grouping spatially connected
     same-sign charged residues.
@@ -119,18 +126,13 @@ def _identify_patches(residues):
             - residue.anchor_point
 
     Returns:
-        (
-            positive_patches,
-            negative_patches,
-        )
-
-        where each patch is a list of residues.
+        A 2-tuple where each item is a list of residues defining a patch, e.g:
+        (positive_patches, negative_patches)
     """
     logger = logging.getLogger(__name__)
 
     neighbor_distance_threshold = 10.0
     net_charge_threshold = 0.25
-
     positive_patches = []
     negative_patches = []
 
@@ -144,7 +146,6 @@ def _identify_patches(residues):
         visited = set()
 
         for residue in charged_residues:
-
             if id(residue) in visited:
                 continue
 
@@ -157,14 +158,10 @@ def _identify_patches(residues):
                 patch.append(current)
 
                 for neighbor in charged_residues:
-
                     if id(neighbor) in visited:
                         continue
 
-                    if (
-                        distance(current, neighbor)
-                        <= neighbor_distance_threshold
-                    ):
+                    if distance(current, neighbor) <= neighbor_distance_threshold:
                         visited.add(id(neighbor))
                         stack.append(neighbor)
 
@@ -176,8 +173,7 @@ def _identify_patches(residues):
     negative_residues = []
 
     for residue in residues:
-
-        charge = getattr(residue, "charge", 0.0)
+        charge = getattr(residue, "charge", None)
         anchor = getattr(residue, "anchor_point", None)
 
         if charge is None or anchor is None:
@@ -204,7 +200,6 @@ class MCCEFeatureExtractor:
 
     The method extract_all_features() returns a list of floats ordered by feature names
     """
-
     def __init__(self):
         self.mcce_folder = None
         # REGISTER ALL FEATURE NAMES HERE
@@ -242,6 +237,18 @@ class MCCEFeatureExtractor:
             "charge_separation_magnitude",
         ]
 
+    def missing_sources(self) -> bool:
+        if self.mcce_folder is None:
+            return False
+        bad = False
+        fld = Path(self.mcce_folder)
+        for source in SOURCE_FILES:
+            if not fld.joinpath(source).exists():
+                logging.debug(f"Missing: {source}")
+                bad = True
+                break
+        return bad
+
 
     def extract_composition_features(self) -> Dict[str, float]:
         """
@@ -264,7 +271,6 @@ class MCCEFeatureExtractor:
 
         if not self.residues:
             logger.warning("No residues loaded; returning zero composition features")
-
             return {
                 "net_charge": 0.0,
                 "isoelectric_point": 0.0,
@@ -274,17 +280,14 @@ class MCCEFeatureExtractor:
             }
 
         total_residues = len(self.residues)
-
         acidic_residues = [
             residue for residue in self.residues
             if residue.is_acidic
         ]
-
         basic_residues = [
             residue for residue in self.residues
             if residue.is_basic
         ]
-
         acidic_count = len(acidic_residues)
         basic_count = len(basic_residues)
 
@@ -293,12 +296,21 @@ class MCCEFeatureExtractor:
         # ------------------------------------------------------------
         net_charge = 0.0
         isoelectric_point = 0.0
-        sum_charge_file = f"{self.mcce_folder}/sum_crg.out"
-
         ph_values = None
         net_charge_values = None
+        sum_charge_file = f"{self.mcce_folder}/sum_crg.out"
 
-        with open(sum_charge_file, "r") as f:
+        if not Path(sum_charge_file).exists():
+            logger.critical("Not found: sum_crg.out in %s", self.mcce_folder)
+            # FIX: should return None
+            return {"net_charge": 0.0,
+                    "isoelectric_point": 0.0,
+                    "acid_fraction_all_residues": 0.0,
+                    "base_fraction_all_residues": 0.0,
+                    "acid_to_base_ratio": 0.0
+                    }
+
+        with open(sum_charge_file) as f:
             for line in f:
                 fields = line.split()
 
@@ -316,14 +328,12 @@ class MCCEFeatureExtractor:
                 "Could not find pH header or Net_Charge line in %s",
                 sum_charge_file,
             )
-
         else:
             if len(ph_values) != len(net_charge_values):
                 logger.warning(
                     "pH column count does not match Net_Charge column count in %s",
                     sum_charge_file,
                 )
-
             else:
                 # Net charge at pH 7.0
                 try:
@@ -347,7 +357,6 @@ class MCCEFeatureExtractor:
                         # solve q = 0
                         isoelectric_point = ph1 + (0.0 - q1) * (ph2 - ph1) / (q2 - q1)
                         break
-
                 else:
                     logger.warning(
                         "Net_Charge does not cross zero in sampled pH range %.1f-%.1f",
@@ -361,7 +370,6 @@ class MCCEFeatureExtractor:
                         key=lambda i: abs(net_charge_values[i]),
                     )
                     isoelectric_point = ph_values[min_abs_index]
-
 
         # ------------------------------------------------------------
         # Composition fractions
@@ -383,13 +391,9 @@ class MCCEFeatureExtractor:
         # Store features
         # ------------------------------------------------------------
         features["net_charge"] = float(net_charge)
-
         features["isoelectric_point"] = float(isoelectric_point)
-
         features["acid_fraction_all_residues"] = float(acid_fraction)
-
         features["base_fraction_all_residues"] = float(base_fraction)
-
         features["acid_to_base_ratio"] = float(acid_to_base_ratio)
 
         logger.debug(
@@ -480,38 +484,28 @@ class MCCEFeatureExtractor:
         acid_count = len(acidic_residues)
         base_count = len(basic_residues)
 
-        features["acid_big_pka_shift_fraction_all_residues"] = (
-            acid_big_shift_count / total_residues
-        )
-
-        features["base_big_pka_shift_fraction_all_residues"] = (
-            base_big_shift_count / total_residues
-        )
-
+        features["acid_big_pka_shift_fraction_all_residues"] = acid_big_shift_count/total_residues
+        features["base_big_pka_shift_fraction_all_residues"] = base_big_shift_count/total_residues
         features["acid_big_pka_shift_fraction_acids_only"] = (
-            acid_big_shift_count / acid_count
+            acid_big_shift_count/acid_count
             if acid_count > 0
             else 0.0
         )
-
         features["base_big_pka_shift_fraction_bases_only"] = (
             base_big_shift_count / base_count
             if base_count > 0
             else 0.0
         )
-
         features["mean_abs_pka_shift"] = (
             float(np.mean(pka_shifts))
             if pka_shifts
             else 0.0
         )
-
         features["max_abs_pka_shift"] = (
             float(np.max(pka_shifts))
             if pka_shifts
             else 0.0
         )
-
         logger.debug(
             (
                 "pKa perturbation features: "
@@ -582,33 +576,23 @@ class MCCEFeatureExtractor:
             }
 
         surface_net_charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in surface_residues)
-
         surface_acid_charge = sum(
             abs(getattr(residue, "charge", 0.0) or 0.0)
             for residue in surface_residues
             if (getattr(residue, "charge", 0.0) or 0.0) < 0
         )
-
         surface_base_charge = sum(
             getattr(residue, "charge", 0.0) or 0.0
             for residue in surface_residues
             if (getattr(residue, "charge", 0.0) or 0.0) > 0
         )
-
         surface_total_sasa = sum(
             getattr(residue, "sasa", 0.0) or 0.0
             for residue in surface_residues
         )
-
-        surface_acid_to_base_ratio = surface_acid_charge / (surface_base_charge + sasa_pseudocount)
-
-        surface_positive_charge_density = surface_base_charge / (
-            surface_total_sasa + sasa_pseudocount
-        )
-
-        surface_negative_charge_density = surface_acid_charge / (
-            surface_total_sasa + sasa_pseudocount
-        )
+        surface_acid_to_base_ratio = surface_acid_charge/(surface_base_charge + sasa_pseudocount)
+        surface_positive_charge_density = surface_base_charge/(surface_total_sasa + sasa_pseudocount)
+        surface_negative_charge_density = surface_acid_charge/(surface_total_sasa + sasa_pseudocount)
 
         return {
             "surface_net_charge": surface_net_charge,
@@ -649,7 +633,6 @@ class MCCEFeatureExtractor:
 
         positive_coords = []
         positive_charges = []
-
         negative_coords = []
         negative_charges = []
 
@@ -657,19 +640,15 @@ class MCCEFeatureExtractor:
         # Collect positive and negative charges separately
         # ---------------------------------------------------------
         for residue in self.residues:
-
             q = getattr(residue, "charge", 0.0)
-
             if q == 0:
                 continue
 
             anchor = getattr(residue, "anchor_point", None)
-
             if anchor is None:
                 continue
 
             r = np.asarray(anchor, dtype=float)
-
             if r.shape != (3,):
                 logger.warning(
                     "Invalid anchor point shape for residue %s: %s",
@@ -690,14 +669,12 @@ class MCCEFeatureExtractor:
         # Need BOTH positive and negative charges
         # ---------------------------------------------------------
         if not positive_coords or not negative_coords:
-
             return {
                 "charge_separation_magnitude": 0.0
             }
 
         positive_coords = np.asarray(positive_coords)
         positive_charges = np.asarray(positive_charges)
-
         negative_coords = np.asarray(negative_coords)
         negative_charges = np.asarray(negative_charges)
 
@@ -709,7 +686,6 @@ class MCCEFeatureExtractor:
             axis=0,
             weights=positive_charges
         )
-
         r_minus = np.average(
             negative_coords,
             axis=0,
@@ -720,17 +696,14 @@ class MCCEFeatureExtractor:
         # Separation vector
         # ---------------------------------------------------------
         separation_vector = r_plus - r_minus
-
         separation_distance = np.linalg.norm(separation_vector)
 
         # ---------------------------------------------------------
         # Effective charge
-        #
         # Using min(Q+, Q-) avoids inflation in highly charged proteins
         # ---------------------------------------------------------
         q_plus = positive_charges.sum()
         q_minus = negative_charges.sum()
-
         q_eff = min(q_plus, q_minus)
 
         # ---------------------------------------------------------
@@ -814,7 +787,6 @@ class MCCEFeatureExtractor:
 
         def compute_anchor_point(residue: Residue) -> np.ndarray:
             atom_by_name = {atom.name: atom for atom in residue.atoms}
-
             anchor_names = ANCHOR_ATOM_NAMES.get(residue.name, [])
 
             xyz_list = [
@@ -822,7 +794,6 @@ class MCCEFeatureExtractor:
                 for name in anchor_names
                 if name in atom_by_name
             ]
-
             # Preferred: midpoint of configured anchor atoms
             if xyz_list:
                 return np.mean(xyz_list, axis=0)
@@ -840,7 +811,6 @@ class MCCEFeatureExtractor:
                 atom.xyz for atom in residue.atoms
                 if not is_hydrogen(atom.name)
             ]
-
             if heavy_xyz:
                 logger.debug(
                     "Anchor fallback to heavy-atom centroid for residue %s",
@@ -867,23 +837,18 @@ class MCCEFeatureExtractor:
             return np.zeros(3)
 
         residues_by_id = OrderedDict()
-
         total_lines = 0
         skipped_short = 0
         skipped_bad_xyz = 0
         total_atoms = 0
-        new_residue_count = 0
 
         with open(pdb_file, "r") as f:
             for line in f:
-
                 total_lines += 1
-
                 if not line.startswith(("ATOM", "HETATM")):
                     continue
 
                 fields = line.split()
-
                 if len(fields) < 8:
                     skipped_short += 1
                     logger.debug(
@@ -895,7 +860,6 @@ class MCCEFeatureExtractor:
                 atom_name = fields[2].strip()
                 res_name = fields[3].strip()
                 mcce_res_id = fields[4].strip()
-
                 try:
                     xyz = np.array(
                         [
@@ -905,7 +869,6 @@ class MCCEFeatureExtractor:
                         ],
                         dtype=float,
                     )
-
                 except ValueError:
                     skipped_bad_xyz += 1
                     logger.debug(
@@ -916,9 +879,7 @@ class MCCEFeatureExtractor:
 
                 base_id = residue_base_id(mcce_res_id)
                 residue_id = f"{res_name}_{base_id}"
-
                 if residue_id not in residues_by_id:
-
                     residue = Residue()
                     residue.residue_id = residue_id
                     residue.name = res_name
@@ -926,20 +887,14 @@ class MCCEFeatureExtractor:
                     residue.is_basic = res_name in BASES
                     residue.pk0 = PK0_VALUES.get(res_name, 0.0)
                     residue.atoms = []
-
                     residues_by_id[residue_id] = residue
 
-                    logger.debug(
-                        "Created residue %s",
-                        residue_id,
-                    )
+                    logger.debug("Created residue %s", residue_id,)
 
                 atom = Atom()
                 atom.name = atom_name
                 atom.xyz = xyz
-
                 residues_by_id[residue_id].atoms.append(atom)
-
                 total_atoms += 1
 
         residues = list(residues_by_id.values())
@@ -953,11 +908,8 @@ class MCCEFeatureExtractor:
 
         acidic_count = 0
         basic_count = 0
-
         for residue in residues:
-
             residue.anchor_point = compute_anchor_point(residue)
-
             if residue.is_acidic:
                 acidic_count += 1
 
@@ -986,7 +938,6 @@ class MCCEFeatureExtractor:
         """Initialize residue charge, SASA, SASA fraction,
         and pKa from MCCE output files.
         """
-
         logger = logging.getLogger(__name__)
 
         sum_charge_file = f"{self.mcce_folder}/sum_crg.out"
@@ -1008,7 +959,6 @@ class MCCEFeatureExtractor:
                 NTR+A0001_ -> NTR_A0001
             """
             raw_id = raw_id.strip()
-
             raw_id = raw_id.rstrip("_")
 
             if "+" in raw_id:
@@ -1237,18 +1187,13 @@ class MCCEFeatureExtractor:
 
             if residue.residue_id in sasa_by_id:
                 matched_id = residue.residue_id
-
             else:
                 res_name, res_num = residue.residue_id.split("_", 1)
 
-                for canonical_name, aliases in RESIDUE_ALIASES.items():
-
+                for _, aliases in RESIDUE_ALIASES.items():
                     if res_name in aliases:
-
                         for alias in aliases:
-
                             alias_id = f"{alias}_{res_num}"
-
                             if alias_id in sasa_by_id:
                                 matched_id = alias_id
                                 break
