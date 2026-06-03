@@ -48,6 +48,25 @@ The proposed electrostatic features are:
 
 ## Quick Start
 
+### Installation with latest changes (recommended)
+The repo is not yet setup to publish automatically, so the usual pip install will be
+the original version.
+```
+# 1. clone this repo somewhere you want it to be, then enter its dir:
+git clone https://github.com/pclass-lab/elefeatures.git
+cd elefeatures
+
+# 2. Activate an environment setup for python>-3.12, eg: p312:
+conda activate p312
+(p312)> pip install -e .
+
+# 3. Go get features:
+(p312)> cd my_mcce_simulations
+
+# Extract features using the book.txt files from all the subfolders that have one:
+(p312)> mcce-features extract-subfolders-with-book .
+```
+
 ### Installation
 `pip install mcce-features`
 
