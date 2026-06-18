@@ -207,13 +207,25 @@ class MCCEFeatureExtractor:
             "net_charge",
             "isoelectric_point",
             "acid_fraction_all_residues",
+            "glu_fraction_all_residues",
+            "asp_fraction_all_residues",
             "base_fraction_all_residues",
+            "lys_fraction_all_residues",
+            "arg_fraction_all_residues",
             "acid_to_base_ratio",
 
             "acid_big_pka_shift_fraction_all_residues",
+            "glu_big_pka_shift_fraction_all_residues",
+            "asp_big_pka_shift_fraction_all_residues",
             "base_big_pka_shift_fraction_all_residues",
+            "lys_big_pka_shift_fraction_all_residues",
+            "arg_big_pka_shift_fraction_all_residues",
             "acid_big_pka_shift_fraction_acids_only",
+            "glu_big_pka_shift_fraction_acids_only",
+            "asp_big_pka_shift_fraction_acids_only",
             "base_big_pka_shift_fraction_bases_only",
+            "lys_big_pka_shift_fraction_bases_only",
+            "arg_big_pka_shift_fraction_bases_only",
             "mean_abs_pka_shift",
             "max_abs_pka_shift",
 
@@ -221,6 +233,11 @@ class MCCEFeatureExtractor:
             "surface_acid_to_base_ratio",
             "surface_positive_charge_density",
             "surface_negative_charge_density",
+
+            "buried_net_charge",
+            "buried_acid_to_base_ratio",
+            "buried_positive_charge_density",
+            "buried_negative_charge_density",
 
             "largest_positive_patch_area",
             "largest_negative_patch_area",
@@ -233,7 +250,6 @@ class MCCEFeatureExtractor:
             "surface_charge_spatial_moment_magnitude",
             "all_charge_spatial_moment_normalized",
             "surface_charge_spatial_moment_normalized",
-
             "charge_separation_magnitude",
         ]
 
@@ -258,7 +274,11 @@ class MCCEFeatureExtractor:
             - net_charge
             - isoelectric_point
             - acid_fraction_all_residues
+            - glu_fraction_all_residues
+            - asp_fraction_all_residues
             - base_fraction_all_residues
+            - lys_fraction_all_residues
+            - arg_fraction_all_residues
             - acid_to_base_ratio
 
         Returns:
@@ -275,7 +295,11 @@ class MCCEFeatureExtractor:
                 "net_charge": 0.0,
                 "isoelectric_point": 0.0,
                 "acid_fraction_all_residues": 0.0,
+                "glu_fraction_all_residues": 0.0,
+                "asp_fraction_all_residues": 0.0,
                 "base_fraction_all_residues": 0.0,
+                "lys_fraction_all_residues": 0.0,
+                "arg_fraction_all_residues": 0.0,
                 "acid_to_base_ratio": 0.0,
             }
 
@@ -290,6 +314,22 @@ class MCCEFeatureExtractor:
         ]
         acidic_count = len(acidic_residues)
         basic_count = len(basic_residues)
+        glu_count = sum(
+            1 for residue in self.residues
+            if residue.name == "GLU"
+        )
+        asp_count = sum(
+            1 for residue in self.residues
+            if residue.name == "ASP"
+        )
+        lys_count = sum(
+            1 for residue in self.residues
+            if residue.name == "LYS"
+        )
+        arg_count = sum(
+            1 for residue in self.residues
+            if residue.name == "ARG"
+        )
 
         # ------------------------------------------------------------
         # Net charge and isoelectric point from sum_crg.out
@@ -306,7 +346,11 @@ class MCCEFeatureExtractor:
             return {"net_charge": 0.0,
                     "isoelectric_point": 0.0,
                     "acid_fraction_all_residues": 0.0,
+                    "glu_fraction_all_residues": 0.0,
+                    "asp_fraction_all_residues": 0.0,
                     "base_fraction_all_residues": 0.0,
+                    "lys_fraction_all_residues": 0.0,
+                    "arg_fraction_all_residues": 0.0,
                     "acid_to_base_ratio": 0.0
                     }
 
@@ -375,7 +419,11 @@ class MCCEFeatureExtractor:
         # Composition fractions
         # ------------------------------------------------------------
         acid_fraction = acidic_count / total_residues
+        glu_fraction = glu_count / total_residues
+        asp_fraction = asp_count / total_residues
         base_fraction = basic_count / total_residues
+        lys_fraction = lys_count / total_residues
+        arg_fraction = arg_count / total_residues
 
         # ------------------------------------------------------------
         # Acid/base ratio
@@ -393,24 +441,37 @@ class MCCEFeatureExtractor:
         features["net_charge"] = float(net_charge)
         features["isoelectric_point"] = float(isoelectric_point)
         features["acid_fraction_all_residues"] = float(acid_fraction)
+        features["glu_fraction_all_residues"] = float(glu_fraction)
+        features["asp_fraction_all_residues"] = float(asp_fraction)
         features["base_fraction_all_residues"] = float(base_fraction)
+        features["lys_fraction_all_residues"] = float(lys_fraction)
+        features["arg_fraction_all_residues"] = float(arg_fraction)
         features["acid_to_base_ratio"] = float(acid_to_base_ratio)
 
         logger.debug(
             (
                 "Composition features: "
-                "residues=%d, acidic=%d, basic=%d, "
+                "residues=%d, acidic=%d, glu=%d, asp=%d, basic=%d, lys=%d, arg=%d, "
                 "net_charge=%.3f, pI=%.3f, "
-                "acid_fraction=%.3f, base_fraction=%.3f, "
+                "acid_fraction=%.3f, glu_fraction=%.3f, asp_fraction=%.3f, "
+                "base_fraction=%.3f, lys_fraction=%.3f, arg_fraction=%.3f, "
                 "acid_to_base_ratio=%.3f"
             ),
             total_residues,
             acidic_count,
+            glu_count,
+            asp_count,
             basic_count,
+            lys_count,
+            arg_count,
             net_charge,
             isoelectric_point,
             acid_fraction,
+            glu_fraction,
+            asp_fraction,
             base_fraction,
+            lys_fraction,
+            arg_fraction,
             acid_to_base_ratio,
         )
 
@@ -424,9 +485,17 @@ class MCCEFeatureExtractor:
 
         Features:
             - acid_big_pka_shift_fraction_all_residues
+            - glu_big_pka_shift_fraction_all_residues
+            - asp_big_pka_shift_fraction_all_residues
             - base_big_pka_shift_fraction_all_residues
+            - lys_big_pka_shift_fraction_all_residues
+            - arg_big_pka_shift_fraction_all_residues
             - acid_big_pka_shift_fraction_acids_only
+            - glu_big_pka_shift_fraction_acids_only
+            - asp_big_pka_shift_fraction_acids_only
             - base_big_pka_shift_fraction_bases_only
+            - lys_big_pka_shift_fraction_bases_only
+            - arg_big_pka_shift_fraction_bases_only
             - mean_abs_pka_shift
             - max_abs_pka_shift
 
@@ -443,9 +512,17 @@ class MCCEFeatureExtractor:
 
             return {
                 "acid_big_pka_shift_fraction_all_residues": 0.0,
+                "glu_big_pka_shift_fraction_all_residues": 0.0,
+                "asp_big_pka_shift_fraction_all_residues": 0.0,
                 "base_big_pka_shift_fraction_all_residues": 0.0,
+                "lys_big_pka_shift_fraction_all_residues": 0.0,
+                "arg_big_pka_shift_fraction_all_residues": 0.0,
                 "acid_big_pka_shift_fraction_acids_only": 0.0,
+                "glu_big_pka_shift_fraction_acids_only": 0.0,
+                "asp_big_pka_shift_fraction_acids_only": 0.0,
                 "base_big_pka_shift_fraction_bases_only": 0.0,
+                "lys_big_pka_shift_fraction_bases_only": 0.0,
+                "arg_big_pka_shift_fraction_bases_only": 0.0,
                 "mean_abs_pka_shift": 0.0,
                 "max_abs_pka_shift": 0.0,
             }
@@ -466,7 +543,11 @@ class MCCEFeatureExtractor:
 
         pka_shifts = []
         acid_big_shift_count = 0
+        glu_big_shift_count = 0
+        asp_big_shift_count = 0
         base_big_shift_count = 0
+        lys_big_shift_count = 0
+        arg_big_shift_count = 0
 
         for residue in titratable_residues:
             pka_shift = residue.pka - residue.pka0
@@ -478,21 +559,53 @@ class MCCEFeatureExtractor:
                 logger.debug(f"Large pKa shift found for residue {residue.residue_id}: abs_pka_shift {abs_pka_shift:.3f} = |pKa {residue.pka:.3f} - pKa0 {residue.pka0:.3f}|")
                 if residue.is_acidic:
                     acid_big_shift_count += 1
+                    if residue.name == "GLU":
+                        glu_big_shift_count += 1
+                    elif residue.name == "ASP":
+                        asp_big_shift_count += 1
                 elif residue.is_basic:
                     base_big_shift_count += 1
+                    if residue.name == "LYS":
+                        lys_big_shift_count += 1
+                    elif residue.name == "ARG":
+                        arg_big_shift_count += 1
 
         acid_count = len(acidic_residues)
         base_count = len(basic_residues)
 
         features["acid_big_pka_shift_fraction_all_residues"] = acid_big_shift_count/total_residues
+        features["glu_big_pka_shift_fraction_all_residues"] = glu_big_shift_count/total_residues
+        features["asp_big_pka_shift_fraction_all_residues"] = asp_big_shift_count/total_residues
         features["base_big_pka_shift_fraction_all_residues"] = base_big_shift_count/total_residues
+        features["lys_big_pka_shift_fraction_all_residues"] = lys_big_shift_count/total_residues
+        features["arg_big_pka_shift_fraction_all_residues"] = arg_big_shift_count/total_residues
         features["acid_big_pka_shift_fraction_acids_only"] = (
             acid_big_shift_count/acid_count
             if acid_count > 0
             else 0.0
         )
+        features["glu_big_pka_shift_fraction_acids_only"] = (
+            glu_big_shift_count/acid_count
+            if acid_count > 0
+            else 0.0
+        )
+        features["asp_big_pka_shift_fraction_acids_only"] = (
+            asp_big_shift_count/acid_count
+            if acid_count > 0
+            else 0.0
+        )
         features["base_big_pka_shift_fraction_bases_only"] = (
             base_big_shift_count / base_count
+            if base_count > 0
+            else 0.0
+        )
+        features["lys_big_pka_shift_fraction_bases_only"] = (
+            lys_big_shift_count / base_count
+            if base_count > 0
+            else 0.0
+        )
+        features["arg_big_pka_shift_fraction_bases_only"] = (
+            arg_big_shift_count / base_count
             if base_count > 0
             else 0.0
         )
@@ -510,14 +623,19 @@ class MCCEFeatureExtractor:
             (
                 "pKa perturbation features: "
                 "residues=%d, acids=%d, bases=%d, "
-                "acid_big_shift=%d, base_big_shift=%d, "
+                "acid_big_shift=%d, glu_big_shift=%d, asp_big_shift=%d, "
+                "base_big_shift=%d, lys_big_shift=%d, arg_big_shift=%d, "
                 "mean_abs_shift=%.3f, max_abs_shift=%.3f"
             ),
             total_residues,
             acid_count,
             base_count,
             acid_big_shift_count,
+            glu_big_shift_count,
+            asp_big_shift_count,
             base_big_shift_count,
+            lys_big_shift_count,
+            arg_big_shift_count,
             features["mean_abs_pka_shift"],
             features["max_abs_pka_shift"],
         )
@@ -550,6 +668,13 @@ class MCCEFeatureExtractor:
         logger = logging.getLogger(__name__)
         surface_sasa_percentage_threshold = 0.1
         sasa_pseudocount = 1e-6
+
+        def acid_to_base_ratio(acid_charge: float, base_charge: float) -> float:
+            if base_charge > 0:
+                return acid_charge / base_charge
+            if acid_charge == 0 and base_charge == 0:
+                return 1.0
+            return 999.0
 
         if not self.residues:
             logger.warning("No residues loaded; returning zero surface charge features")
@@ -590,7 +715,7 @@ class MCCEFeatureExtractor:
             getattr(residue, "sasa", 0.0) or 0.0
             for residue in surface_residues
         )
-        surface_acid_to_base_ratio = surface_acid_charge/(surface_base_charge + sasa_pseudocount)
+        surface_acid_to_base_ratio = acid_to_base_ratio(surface_acid_charge, surface_base_charge)
         surface_positive_charge_density = surface_base_charge/(surface_total_sasa + sasa_pseudocount)
         surface_negative_charge_density = surface_acid_charge/(surface_total_sasa + sasa_pseudocount)
 
@@ -599,6 +724,85 @@ class MCCEFeatureExtractor:
             "surface_acid_to_base_ratio": surface_acid_to_base_ratio,
             "surface_positive_charge_density": surface_positive_charge_density,
             "surface_negative_charge_density": surface_negative_charge_density,
+        }
+
+    def extract_buried_charge_features(self) -> Dict[str, float]:
+        """
+        Extract buried charge features based on charges of residues below the surface cutoff.
+
+        Features:
+        - buried_net_charge
+        - buried_acid_to_base_ratio
+        - buried_positive_charge_density
+        - buried_negative_charge_density
+
+        Data source:
+        - Residue exposed surface area in residue.sasa
+        - Residue exposed surface area fraction in residue.sasa_fraction
+        - Residue charge in residue.charge
+
+        Returns:
+        Dictionary mapping feature names to float values.
+        """
+        logger = logging.getLogger(__name__)
+        surface_sasa_percentage_threshold = 0.1
+        sasa_pseudocount = 1e-6
+
+        def acid_to_base_ratio(acid_charge: float, base_charge: float) -> float:
+            if base_charge > 0:
+                return acid_charge / base_charge
+            if acid_charge == 0 and base_charge == 0:
+                return 1.0
+            return 999.0
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero buried charge features")
+            return {
+                "buried_net_charge": 0.0,
+                "buried_acid_to_base_ratio": 0.0,
+                "buried_positive_charge_density": 0.0,
+                "buried_negative_charge_density": 0.0,
+            }
+
+        buried_residues = [
+            residue for residue in self.residues
+            if residue.sasa_fraction is not None
+            and residue.sasa_fraction <= surface_sasa_percentage_threshold
+        ]
+
+        if not buried_residues:
+            logger.warning("No buried residues found; returning zero buried charge features")
+            return {
+                "buried_net_charge": 0.0,
+                "buried_acid_to_base_ratio": 0.0,
+                "buried_positive_charge_density": 0.0,
+                "buried_negative_charge_density": 0.0,
+            }
+
+        buried_net_charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in buried_residues)
+        buried_acid_charge = sum(
+            abs(getattr(residue, "charge", 0.0) or 0.0)
+            for residue in buried_residues
+            if (getattr(residue, "charge", 0.0) or 0.0) < 0
+        )
+        buried_base_charge = sum(
+            getattr(residue, "charge", 0.0) or 0.0
+            for residue in buried_residues
+            if (getattr(residue, "charge", 0.0) or 0.0) > 0
+        )
+        buried_total_sasa = sum(
+            getattr(residue, "sasa", 0.0) or 0.0
+            for residue in buried_residues
+        )
+        buried_acid_to_base_ratio = acid_to_base_ratio(buried_acid_charge, buried_base_charge)
+        buried_positive_charge_density = buried_base_charge/(buried_total_sasa + sasa_pseudocount)
+        buried_negative_charge_density = buried_acid_charge/(buried_total_sasa + sasa_pseudocount)
+
+        return {
+            "buried_net_charge": buried_net_charge,
+            "buried_acid_to_base_ratio": buried_acid_to_base_ratio,
+            "buried_positive_charge_density": buried_positive_charge_density,
+            "buried_negative_charge_density": buried_negative_charge_density,
         }
 
     def extract_dipole_features(self) -> Dict[str, float]:
@@ -737,6 +941,7 @@ class MCCEFeatureExtractor:
         features.update(self.extract_composition_features())
         features.update(self.extract_pka_perturbation_features())
         features.update(self.extract_surface_charge_features())
+        features.update(self.extract_buried_charge_features())
         features.update(self.extract_patch_localization_features())
         features.update(self.extract_asymmetry_features())
         features.update(self.extract_dipole_features())
