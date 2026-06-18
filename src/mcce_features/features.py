@@ -211,6 +211,7 @@ class MCCEFeatureExtractor:
         self.mcce_folder = None
         # REGISTER ALL FEATURE NAMES HERE
         self.feature_names = [
+            # Global composition and pH-7 net-charge summary.
             "net_charge",
             "isoelectric_point",
             "acid_fraction_all_residues",
@@ -221,6 +222,7 @@ class MCCEFeatureExtractor:
             "arg_fraction_all_residues",
             "acid_to_base_ratio",
 
+            # pKa perturbation prevalence across acidic and basic residue classes.
             "acid_big_pka_shift_fraction_all_residues",
             "glu_big_pka_shift_fraction_all_residues",
             "asp_big_pka_shift_fraction_all_residues",
@@ -236,6 +238,7 @@ class MCCEFeatureExtractor:
             "mean_abs_pka_shift",
             "max_abs_pka_shift",
 
+            # Solvent-exposed charge balance and charge density at target pH values.
             "surface_net_charge_6.0",
             "surface_acid_to_base_ratio_6.0",
             "surface_positive_charge_density_6.0",
@@ -249,6 +252,7 @@ class MCCEFeatureExtractor:
             "surface_positive_charge_density_8.0",
             "surface_negative_charge_density_8.0",            
 
+            # Buried charge balance and charge density at target pH values.
             "buried_net_charge_6.0",
             "buried_acid_to_base_ratio_6.0",
             "buried_positive_charge_density_6.0",
@@ -262,6 +266,7 @@ class MCCEFeatureExtractor:
             "buried_positive_charge_density_8.0",
             "buried_negative_charge_density_8.0",
 
+            # Largest same-sign charge patch size, charge, and density at target pH values.
             "largest_positive_patch_area_6.0",
             "largest_negative_patch_area_6.0",
             "largest_positive_patch_charge_6.0",
@@ -281,6 +286,7 @@ class MCCEFeatureExtractor:
             "largest_positive_patch_density_8.0",
             "largest_negative_patch_density_8.0",
 
+            # Charge asymmetry, spatial moment, and positive-negative separation at target pH values.
             "all_charge_spatial_moment_magnitude_6.0",
             "surface_charge_spatial_moment_magnitude_6.0",
             "all_charge_spatial_moment_normalized_6.0",
@@ -296,6 +302,12 @@ class MCCEFeatureExtractor:
             "all_charge_spatial_moment_normalized_8.0",
             "surface_charge_spatial_moment_normalized_8.0",
             "charge_separation_magnitude_8.0",
+
+            # Nearest charged-residue anchor distances at pH 7.0.
+            "nearest_opposite_charge_distance",
+            "nearest_positive_charge_distance",
+            "nearest_negative_charge_distance",
+
         ]
 
     def missing_sources(self) -> bool:
@@ -959,6 +971,92 @@ class MCCEFeatureExtractor:
         self._apply_charges_for_ph("7.0")
         return features
 
+    def extract_nearest_charge_distance_features(self) -> Dict[str, float]:
+        """
+        Extract nearest-neighbor distances among charged residues at pH 7.0.
+
+        Features:
+        - nearest_opposite_charge_distance
+        - nearest_positive_charge_distance
+        - nearest_negative_charge_distance
+
+        Charged residues are selected with the same absolute charge threshold
+        used for patch localization. Distances use residue anchor points.
+        """
+        logger = logging.getLogger(__name__)
+        net_charge_threshold = 0.25
+
+        features = {
+            "nearest_opposite_charge_distance": 0.0,
+            "nearest_positive_charge_distance": 0.0,
+            "nearest_negative_charge_distance": 0.0,
+        }
+
+        if not self.residues:
+            logger.warning("No residues loaded; returning zero nearest charge distance features")
+            return features
+
+        self._apply_charges_for_ph("7.0")
+
+        positive_residues = []
+        negative_residues = []
+
+        for residue in self.residues:
+            charge = getattr(residue, "charge", None)
+            anchor = getattr(residue, "anchor_point", None)
+
+            if charge is None or anchor is None:
+                continue
+
+            anchor = np.asarray(anchor, dtype=float)
+            if anchor.shape != (3,):
+                logger.warning(
+                    "Invalid anchor point shape for residue %s: %s",
+                    getattr(residue, "residue_id", "?"),
+                    anchor.shape,
+                )
+                continue
+
+            if charge > net_charge_threshold:
+                positive_residues.append((residue, anchor))
+            elif charge < -net_charge_threshold:
+                negative_residues.append((residue, anchor))
+
+        def nearest_distance(group_a, group_b=None):
+            if group_b is None:
+                if len(group_a) < 2:
+                    return 0.0
+
+                best = None
+                for i in range(len(group_a) - 1):
+                    for j in range(i + 1, len(group_a)):
+                        distance = np.linalg.norm(group_a[i][1] - group_a[j][1])
+                        if best is None or distance < best:
+                            best = distance
+
+                return float(best) if best is not None else 0.0
+
+            if not group_a or not group_b:
+                return 0.0
+
+            best = None
+            for _, anchor_a in group_a:
+                for _, anchor_b in group_b:
+                    distance = np.linalg.norm(anchor_a - anchor_b)
+                    if best is None or distance < best:
+                        best = distance
+
+            return float(best) if best is not None else 0.0
+
+        features["nearest_opposite_charge_distance"] = nearest_distance(
+            positive_residues,
+            negative_residues,
+        )
+        features["nearest_positive_charge_distance"] = nearest_distance(positive_residues)
+        features["nearest_negative_charge_distance"] = nearest_distance(negative_residues)
+
+        return features
+
 
     def extract_all_features(self, folder: str) -> List[float]:
         """
@@ -983,6 +1081,7 @@ class MCCEFeatureExtractor:
         features.update(self.extract_patch_localization_features())
         features.update(self.extract_asymmetry_features())
         features.update(self.extract_dipole_features())
+        features.update(self.extract_nearest_charge_distance_features())
 
         # Guardrail 1: missing registered features
         missing = set(self.feature_names) - set(features)
