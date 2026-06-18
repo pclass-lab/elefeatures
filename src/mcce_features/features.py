@@ -93,6 +93,8 @@ SOURCE_FILES = [
     "pK.out",
 ]
 
+CHARGE_PH_VALUES = (6.0, 7.0, 8.0)
+
 class Atom:
     """A class representing an atom in the protein structure."""
     def __init__(self):
@@ -105,6 +107,7 @@ class Residue:
         self.residue_id = ""                # Unique identifier for the residue, e.g., "ASP_A_25"
         self.name = ""                      # Residue name, e.g., "ASP", "GLU", "LYS"
         self.charge = 0.0                   # Placeholder value, should be set based on MCCE output
+        self.charges_by_ph = {}             # Charge values keyed by pH label, e.g., "7.0"
         self.sasa = 0.0                     # Solvent Accessible Surface Area, placeholder value
         self.sasa_fraction = 0.0            # Fraction of the residue's surface area that is solvent-accessible, placeholder value
         self.pka0 = 0.0                     # Intrinsic pKa value, placeholder value
@@ -194,6 +197,10 @@ def _identify_patches(residues: List[Residue]) -> Tuple[List[str], List[str]]:
     return positive_patches, negative_patches
 
 
+def _ph_label(ph: float) -> str:
+    return f"{ph:.1f}"
+
+
 class MCCEFeatureExtractor:
     """
     A feature extractor for MCCE output files.
@@ -229,28 +236,66 @@ class MCCEFeatureExtractor:
             "mean_abs_pka_shift",
             "max_abs_pka_shift",
 
-            "surface_net_charge",
-            "surface_acid_to_base_ratio",
-            "surface_positive_charge_density",
-            "surface_negative_charge_density",
+            "surface_net_charge_6.0",
+            "surface_acid_to_base_ratio_6.0",
+            "surface_positive_charge_density_6.0",
+            "surface_negative_charge_density_6.0",
+            "surface_net_charge_7.0",
+            "surface_acid_to_base_ratio_7.0",
+            "surface_positive_charge_density_7.0",
+            "surface_negative_charge_density_7.0",
+            "surface_net_charge_8.0",
+            "surface_acid_to_base_ratio_8.0",
+            "surface_positive_charge_density_8.0",
+            "surface_negative_charge_density_8.0",            
 
-            "buried_net_charge",
-            "buried_acid_to_base_ratio",
-            "buried_positive_charge_density",
-            "buried_negative_charge_density",
+            "buried_net_charge_6.0",
+            "buried_acid_to_base_ratio_6.0",
+            "buried_positive_charge_density_6.0",
+            "buried_negative_charge_density_6.0",
+            "buried_net_charge_7.0",
+            "buried_acid_to_base_ratio_7.0",
+            "buried_positive_charge_density_7.0",
+            "buried_negative_charge_density_7.0",
+            "buried_net_charge_8.0",
+            "buried_acid_to_base_ratio_8.0",
+            "buried_positive_charge_density_8.0",
+            "buried_negative_charge_density_8.0",
 
-            "largest_positive_patch_area",
-            "largest_negative_patch_area",
-            "largest_positive_patch_charge",
-            "largest_negative_patch_charge",
-            "largest_positive_patch_density",
-            "largest_negative_patch_density",
+            "largest_positive_patch_area_6.0",
+            "largest_negative_patch_area_6.0",
+            "largest_positive_patch_charge_6.0",
+            "largest_negative_patch_charge_6.0",
+            "largest_positive_patch_density_6.0",
+            "largest_negative_patch_density_6.0",
+            "largest_positive_patch_area_7.0",
+            "largest_negative_patch_area_7.0",
+            "largest_positive_patch_charge_7.0",
+            "largest_negative_patch_charge_7.0",
+            "largest_positive_patch_density_7.0",
+            "largest_negative_patch_density_7.0",
+            "largest_positive_patch_area_8.0",
+            "largest_negative_patch_area_8.0",
+            "largest_positive_patch_charge_8.0",
+            "largest_negative_patch_charge_8.0",
+            "largest_positive_patch_density_8.0",
+            "largest_negative_patch_density_8.0",
 
-            "all_charge_spatial_moment_magnitude",
-            "surface_charge_spatial_moment_magnitude",
-            "all_charge_spatial_moment_normalized",
-            "surface_charge_spatial_moment_normalized",
-            "charge_separation_magnitude",
+            "all_charge_spatial_moment_magnitude_6.0",
+            "surface_charge_spatial_moment_magnitude_6.0",
+            "all_charge_spatial_moment_normalized_6.0",
+            "surface_charge_spatial_moment_normalized_6.0",
+            "charge_separation_magnitude_6.0",
+            "all_charge_spatial_moment_magnitude_7.0",
+            "surface_charge_spatial_moment_magnitude_7.0",
+            "all_charge_spatial_moment_normalized_7.0",
+            "surface_charge_spatial_moment_normalized_7.0",
+            "charge_separation_magnitude_7.0",
+            "all_charge_spatial_moment_magnitude_8.0",
+            "surface_charge_spatial_moment_magnitude_8.0",
+            "all_charge_spatial_moment_normalized_8.0",
+            "surface_charge_spatial_moment_normalized_8.0",
+            "charge_separation_magnitude_8.0",
         ]
 
     def missing_sources(self) -> bool:
@@ -264,6 +309,11 @@ class MCCEFeatureExtractor:
                 bad = True
                 break
         return bad
+
+    def _apply_charges_for_ph(self, ph_label: str):
+        """Set residue.charge values from cached charges for one pH."""
+        for residue in self.residues:
+            residue.charge = getattr(residue, "charges_by_ph", {}).get(ph_label, 0.0)
 
 
     def extract_composition_features(self) -> Dict[str, float]:
@@ -648,10 +698,10 @@ class MCCEFeatureExtractor:
         Extract surface charge features based on the charges of residues and their solvent accessibility.
 
         Features:
-        - surface_net_charge
-        - surface_acid_to_base_ratio
-        - surface_positive_charge_density
-        - surface_negative_charge_density
+        - surface_net_charge_<pH>
+        - surface_acid_to_base_ratio_<pH>
+        - surface_positive_charge_density_<pH>
+        - surface_negative_charge_density_<pH>
 
         Data source:
         - Residue exposed surface area in residue.sasa
@@ -676,14 +726,19 @@ class MCCEFeatureExtractor:
                 return 1.0
             return 999.0
 
+        def zero_features() -> Dict[str, float]:
+            features = {}
+            for ph in CHARGE_PH_VALUES:
+                ph_label = _ph_label(ph)
+                features[f"surface_net_charge_{ph_label}"] = 0.0
+                features[f"surface_acid_to_base_ratio_{ph_label}"] = 0.0
+                features[f"surface_positive_charge_density_{ph_label}"] = 0.0
+                features[f"surface_negative_charge_density_{ph_label}"] = 0.0
+            return features
+
         if not self.residues:
             logger.warning("No residues loaded; returning zero surface charge features")
-            return {
-                "surface_net_charge": 0.0,
-                "surface_acid_to_base_ratio": 0.0,
-                "surface_positive_charge_density": 0.0,
-                "surface_negative_charge_density": 0.0,
-            }
+            return zero_features()
 
         surface_residues = [
             residue for residue in self.residues
@@ -693,48 +748,50 @@ class MCCEFeatureExtractor:
 
         if not surface_residues:
             logger.warning("No surface residues found; returning zero surface charge features")
-            return {
-                "surface_net_charge": 0.0,
-                "surface_acid_to_base_ratio": 0.0,
-                "surface_positive_charge_density": 0.0,
-                "surface_negative_charge_density": 0.0,
-            }
+            return zero_features()
 
-        surface_net_charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in surface_residues)
-        surface_acid_charge = sum(
-            abs(getattr(residue, "charge", 0.0) or 0.0)
-            for residue in surface_residues
-            if (getattr(residue, "charge", 0.0) or 0.0) < 0
-        )
-        surface_base_charge = sum(
-            getattr(residue, "charge", 0.0) or 0.0
-            for residue in surface_residues
-            if (getattr(residue, "charge", 0.0) or 0.0) > 0
-        )
         surface_total_sasa = sum(
             getattr(residue, "sasa", 0.0) or 0.0
             for residue in surface_residues
         )
-        surface_acid_to_base_ratio = acid_to_base_ratio(surface_acid_charge, surface_base_charge)
-        surface_positive_charge_density = surface_base_charge/(surface_total_sasa + sasa_pseudocount)
-        surface_negative_charge_density = surface_acid_charge/(surface_total_sasa + sasa_pseudocount)
 
-        return {
-            "surface_net_charge": surface_net_charge,
-            "surface_acid_to_base_ratio": surface_acid_to_base_ratio,
-            "surface_positive_charge_density": surface_positive_charge_density,
-            "surface_negative_charge_density": surface_negative_charge_density,
-        }
+        features = {}
+        for ph in CHARGE_PH_VALUES:
+            ph_label = _ph_label(ph)
+            self._apply_charges_for_ph(ph_label)
+
+            surface_net_charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in surface_residues)
+            surface_acid_charge = sum(
+                abs(getattr(residue, "charge", 0.0) or 0.0)
+                for residue in surface_residues
+                if (getattr(residue, "charge", 0.0) or 0.0) < 0
+            )
+            surface_base_charge = sum(
+                getattr(residue, "charge", 0.0) or 0.0
+                for residue in surface_residues
+                if (getattr(residue, "charge", 0.0) or 0.0) > 0
+            )
+            surface_acid_to_base_ratio = acid_to_base_ratio(surface_acid_charge, surface_base_charge)
+            surface_positive_charge_density = surface_base_charge/(surface_total_sasa + sasa_pseudocount)
+            surface_negative_charge_density = surface_acid_charge/(surface_total_sasa + sasa_pseudocount)
+
+            features[f"surface_net_charge_{ph_label}"] = surface_net_charge
+            features[f"surface_acid_to_base_ratio_{ph_label}"] = surface_acid_to_base_ratio
+            features[f"surface_positive_charge_density_{ph_label}"] = surface_positive_charge_density
+            features[f"surface_negative_charge_density_{ph_label}"] = surface_negative_charge_density
+
+        self._apply_charges_for_ph("7.0")
+        return features
 
     def extract_buried_charge_features(self) -> Dict[str, float]:
         """
         Extract buried charge features based on charges of residues below the surface cutoff.
 
         Features:
-        - buried_net_charge
-        - buried_acid_to_base_ratio
-        - buried_positive_charge_density
-        - buried_negative_charge_density
+        - buried_net_charge_<pH>
+        - buried_acid_to_base_ratio_<pH>
+        - buried_positive_charge_density_<pH>
+        - buried_negative_charge_density_<pH>
 
         Data source:
         - Residue exposed surface area in residue.sasa
@@ -755,14 +812,19 @@ class MCCEFeatureExtractor:
                 return 1.0
             return 999.0
 
+        def zero_features() -> Dict[str, float]:
+            features = {}
+            for ph in CHARGE_PH_VALUES:
+                ph_label = _ph_label(ph)
+                features[f"buried_net_charge_{ph_label}"] = 0.0
+                features[f"buried_acid_to_base_ratio_{ph_label}"] = 0.0
+                features[f"buried_positive_charge_density_{ph_label}"] = 0.0
+                features[f"buried_negative_charge_density_{ph_label}"] = 0.0
+            return features
+
         if not self.residues:
             logger.warning("No residues loaded; returning zero buried charge features")
-            return {
-                "buried_net_charge": 0.0,
-                "buried_acid_to_base_ratio": 0.0,
-                "buried_positive_charge_density": 0.0,
-                "buried_negative_charge_density": 0.0,
-            }
+            return zero_features()
 
         buried_residues = [
             residue for residue in self.residues
@@ -772,38 +834,40 @@ class MCCEFeatureExtractor:
 
         if not buried_residues:
             logger.warning("No buried residues found; returning zero buried charge features")
-            return {
-                "buried_net_charge": 0.0,
-                "buried_acid_to_base_ratio": 0.0,
-                "buried_positive_charge_density": 0.0,
-                "buried_negative_charge_density": 0.0,
-            }
+            return zero_features()
 
-        buried_net_charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in buried_residues)
-        buried_acid_charge = sum(
-            abs(getattr(residue, "charge", 0.0) or 0.0)
-            for residue in buried_residues
-            if (getattr(residue, "charge", 0.0) or 0.0) < 0
-        )
-        buried_base_charge = sum(
-            getattr(residue, "charge", 0.0) or 0.0
-            for residue in buried_residues
-            if (getattr(residue, "charge", 0.0) or 0.0) > 0
-        )
         buried_total_sasa = sum(
             getattr(residue, "sasa", 0.0) or 0.0
             for residue in buried_residues
         )
-        buried_acid_to_base_ratio = acid_to_base_ratio(buried_acid_charge, buried_base_charge)
-        buried_positive_charge_density = buried_base_charge/(buried_total_sasa + sasa_pseudocount)
-        buried_negative_charge_density = buried_acid_charge/(buried_total_sasa + sasa_pseudocount)
 
-        return {
-            "buried_net_charge": buried_net_charge,
-            "buried_acid_to_base_ratio": buried_acid_to_base_ratio,
-            "buried_positive_charge_density": buried_positive_charge_density,
-            "buried_negative_charge_density": buried_negative_charge_density,
-        }
+        features = {}
+        for ph in CHARGE_PH_VALUES:
+            ph_label = _ph_label(ph)
+            self._apply_charges_for_ph(ph_label)
+
+            buried_net_charge = sum(getattr(residue, "charge", 0.0) or 0.0 for residue in buried_residues)
+            buried_acid_charge = sum(
+                abs(getattr(residue, "charge", 0.0) or 0.0)
+                for residue in buried_residues
+                if (getattr(residue, "charge", 0.0) or 0.0) < 0
+            )
+            buried_base_charge = sum(
+                getattr(residue, "charge", 0.0) or 0.0
+                for residue in buried_residues
+                if (getattr(residue, "charge", 0.0) or 0.0) > 0
+            )
+            buried_acid_to_base_ratio = acid_to_base_ratio(buried_acid_charge, buried_base_charge)
+            buried_positive_charge_density = buried_base_charge/(buried_total_sasa + sasa_pseudocount)
+            buried_negative_charge_density = buried_acid_charge/(buried_total_sasa + sasa_pseudocount)
+
+            features[f"buried_net_charge_{ph_label}"] = buried_net_charge
+            features[f"buried_acid_to_base_ratio_{ph_label}"] = buried_acid_to_base_ratio
+            features[f"buried_positive_charge_density_{ph_label}"] = buried_positive_charge_density
+            features[f"buried_negative_charge_density_{ph_label}"] = buried_negative_charge_density
+
+        self._apply_charges_for_ph("7.0")
+        return features
 
     def extract_dipole_features(self) -> Dict[str, float]:
         """
@@ -815,7 +879,7 @@ class MCCEFeatureExtractor:
             3. Scale by effective charge
 
         Feature:
-            charge_separation_magnitude
+            charge_separation_magnitude_<pH>
 
         Notes:
             - Uses residue.anchor_point as coordinates
@@ -826,100 +890,66 @@ class MCCEFeatureExtractor:
         """
         logger = logging.getLogger(__name__)
 
-        charge_separation_magnitude = 0.0
-
         if not self.residues:
             logger.warning("No residues loaded; returning zero dipole features")
-
             return {
-                "charge_separation_magnitude": 0.0
+                f"charge_separation_magnitude_{_ph_label(ph)}": 0.0
+                for ph in CHARGE_PH_VALUES
             }
 
-        positive_coords = []
-        positive_charges = []
-        negative_coords = []
-        negative_charges = []
+        def calculate_charge_separation():
+            positive_coords = []
+            positive_charges = []
+            negative_coords = []
+            negative_charges = []
 
-        # ---------------------------------------------------------
-        # Collect positive and negative charges separately
-        # ---------------------------------------------------------
-        for residue in self.residues:
-            q = getattr(residue, "charge", 0.0)
-            if q == 0:
-                continue
+            for residue in self.residues:
+                q = getattr(residue, "charge", 0.0)
+                if q == 0:
+                    continue
 
-            anchor = getattr(residue, "anchor_point", None)
-            if anchor is None:
-                continue
+                anchor = getattr(residue, "anchor_point", None)
+                if anchor is None:
+                    continue
 
-            r = np.asarray(anchor, dtype=float)
-            if r.shape != (3,):
-                logger.warning(
-                    "Invalid anchor point shape for residue %s: %s",
-                    getattr(residue, "resid", "?"),
-                    r.shape,
-                )
-                continue
+                r = np.asarray(anchor, dtype=float)
+                if r.shape != (3,):
+                    logger.warning(
+                        "Invalid anchor point shape for residue %s: %s",
+                        getattr(residue, "resid", "?"),
+                        r.shape,
+                    )
+                    continue
 
-            if q > 0:
-                positive_coords.append(r)
-                positive_charges.append(q)
+                if q > 0:
+                    positive_coords.append(r)
+                    positive_charges.append(q)
+                else:
+                    negative_coords.append(r)
+                    negative_charges.append(abs(q))
 
-            else:
-                negative_coords.append(r)
-                negative_charges.append(abs(q))
+            if not positive_coords or not negative_coords:
+                return 0.0
 
-        # ---------------------------------------------------------
-        # Need BOTH positive and negative charges
-        # ---------------------------------------------------------
-        if not positive_coords or not negative_coords:
-            return {
-                "charge_separation_magnitude": 0.0
-            }
+            positive_coords = np.asarray(positive_coords)
+            positive_charges = np.asarray(positive_charges)
+            negative_coords = np.asarray(negative_coords)
+            negative_charges = np.asarray(negative_charges)
 
-        positive_coords = np.asarray(positive_coords)
-        positive_charges = np.asarray(positive_charges)
-        negative_coords = np.asarray(negative_coords)
-        negative_charges = np.asarray(negative_charges)
+            r_plus = np.average(positive_coords, axis=0, weights=positive_charges)
+            r_minus = np.average(negative_coords, axis=0, weights=negative_charges)
+            separation_distance = np.linalg.norm(r_plus - r_minus)
+            q_eff = min(positive_charges.sum(), negative_charges.sum())
+            return float(q_eff * separation_distance)
 
-        # ---------------------------------------------------------
-        # Weighted charge centroids
-        # ---------------------------------------------------------
-        r_plus = np.average(
-            positive_coords,
-            axis=0,
-            weights=positive_charges
-        )
-        r_minus = np.average(
-            negative_coords,
-            axis=0,
-            weights=negative_charges
-        )
+        features = {}
+        for ph in CHARGE_PH_VALUES:
+            ph_label = _ph_label(ph)
+            self._apply_charges_for_ph(ph_label)
+            features[f"charge_separation_magnitude_{ph_label}"] = calculate_charge_separation()
 
-        # ---------------------------------------------------------
-        # Separation vector
-        # ---------------------------------------------------------
-        separation_vector = r_plus - r_minus
-        separation_distance = np.linalg.norm(separation_vector)
-
-        # ---------------------------------------------------------
-        # Effective charge
-        # Using min(Q+, Q-) avoids inflation in highly charged proteins
-        # ---------------------------------------------------------
-        q_plus = positive_charges.sum()
-        q_minus = negative_charges.sum()
-        q_eff = min(q_plus, q_minus)
-
-        # ---------------------------------------------------------
-        # Charge separation magnitude
-        # ---------------------------------------------------------
-        charge_separation_magnitude = q_eff * separation_distance
-
-        return {
-            "charge_separation_magnitude": float(
-                charge_separation_magnitude
-            )
-        }
+        self._apply_charges_for_ph("7.0")
+        return features
 
 
     def extract_all_features(self, folder: str) -> List[float]:
@@ -1182,13 +1212,15 @@ class MCCEFeatureExtractor:
             except ValueError:
                 return None
 
-        def find_ph7_index(ph_values):
-            """Return the pH 7 column index for variants like 7, 7.0, and 7.00."""
+        def find_ph_indices(ph_values):
+            """Return target pH column indexes for variants like 7, 7.0, and 7.00."""
+            ph_indices = {}
             for index, value in enumerate(ph_values):
                 ph = safe_float(value)
-                if ph == 7.0:
-                    return index
-            return None
+                for target_ph in CHARGE_PH_VALUES:
+                    if ph == target_ph:
+                        ph_indices[_ph_label(target_ph)] = index
+            return ph_indices
 
         residue_by_id = {
             residue.residue_id: residue
@@ -1196,6 +1228,10 @@ class MCCEFeatureExtractor:
         }
 
         charge_by_id = {}
+        charges_by_id_by_ph = {
+            _ph_label(ph): {}
+            for ph in CHARGE_PH_VALUES
+        }
         sasa_by_id = {}
         pka_by_id = {}
 
@@ -1205,7 +1241,7 @@ class MCCEFeatureExtractor:
         charge_lines = 0
         charge_values_loaded = 0
         skipped_charge_lines = 0
-        ph7_index = None
+        ph_indices = {}
 
         with open(sum_charge_file, "r") as f:
             for line in f:
@@ -1217,22 +1253,24 @@ class MCCEFeatureExtractor:
                 if fields[0] == "ph":
                     ph_values = fields[1:]
 
-                    ph7_index = find_ph7_index(ph_values)
-                    if ph7_index is not None:
-                        logger.debug("Found pH 7.0 charge column at index %d", ph7_index)
-                    else:
-                        logger.warning(
-                            "Could not find pH 7.0 column in %s; charge values will not be loaded",
-                            sum_charge_file,
-                        )
+                    ph_indices = find_ph_indices(ph_values)
+                    for ph_label in (_ph_label(ph) for ph in CHARGE_PH_VALUES):
+                        if ph_label in ph_indices:
+                            logger.debug(
+                                "Found pH %s charge column at index %d",
+                                ph_label,
+                                ph_indices[ph_label],
+                            )
+                        else:
+                            logger.warning(
+                                "Could not find pH %s column in %s; charge values will not be loaded for that pH",
+                                ph_label,
+                                sum_charge_file,
+                            )
 
                     continue
 
-                if ph7_index is None:
-                    continue
-
-                if len(fields) <= ph7_index + 1:
-                    skipped_charge_lines += 1
+                if not ph_indices:
                     continue
 
                 raw_res_id = fields[0]
@@ -1242,19 +1280,32 @@ class MCCEFeatureExtractor:
                     skipped_charge_lines += 1
                     continue
 
-                charge = safe_float(fields[ph7_index + 1])
-                if charge is None:
+                residue_id = normalize_mcce_residue_id(raw_res_id)
+                loaded_any_charge = False
+
+                for ph_label, ph_index in ph_indices.items():
+                    if len(fields) <= ph_index + 1:
+                        continue
+
+                    charge = safe_float(fields[ph_index + 1])
+                    if charge is None:
+                        continue
+
+                    charges_by_id_by_ph[ph_label][residue_id] = charge
+                    loaded_any_charge = True
+
+                    if ph_label == "7.0":
+                        charge_by_id[residue_id] = charge
+
+                if not loaded_any_charge:
                     skipped_charge_lines += 1
                     continue
-
-                residue_id = normalize_mcce_residue_id(raw_res_id)
-                charge_by_id[residue_id] = charge
 
                 charge_lines += 1
                 charge_values_loaded += 1
 
         logger.debug(
-            "Loaded charge values for %d residues from %s",
+            "Loaded target-pH charge values for %d residues from %s",
             charge_values_loaded,
             sum_charge_file,
         )
@@ -1387,6 +1438,10 @@ class MCCEFeatureExtractor:
         missing_pka = 0
 
         for residue in self.residues:
+            residue.charges_by_ph = {
+                ph_label: charges_by_id.get(residue.residue_id, 0.0)
+                for ph_label, charges_by_id in charges_by_id_by_ph.items()
+            }
 
             if residue.residue_id in charge_by_id:
                 residue.charge = charge_by_id[residue.residue_id]
@@ -1458,12 +1513,12 @@ class MCCEFeatureExtractor:
         Extract features related to the localization of charged patches on the protein surface.
 
         Features:
-        - largest_positive_patch_area
-        - largest_negative_patch_area
-        - largest_positive_patch_charge
-        - largest_negative_patch_charge
-        - largest_positive_patch_density
-        - largest_negative_patch_density
+        - largest_positive_patch_area_<pH>
+        - largest_negative_patch_area_<pH>
+        - largest_positive_patch_charge_<pH>
+        - largest_negative_patch_charge_<pH>
+        - largest_positive_patch_density_<pH>
+        - largest_negative_patch_density_<pH>
 
         Notes:
         Patch density is defined as total charge in the patch divided by the solvent-accessible surface area of the patch.
@@ -1476,20 +1531,19 @@ class MCCEFeatureExtractor:
         logger = logging.getLogger(__name__)
         sasa_pseudocount = 1e-6
 
-        features = {
-            "largest_positive_patch_area": 0.0,
-            "largest_negative_patch_area": 0.0,
-            "largest_positive_patch_charge": 0.0,
-            "largest_negative_patch_charge": 0.0,
-            "largest_positive_patch_density": 0.0,
-            "largest_negative_patch_density": 0.0,
-        }
+        features = {}
+        for ph in CHARGE_PH_VALUES:
+            ph_label = _ph_label(ph)
+            features[f"largest_positive_patch_area_{ph_label}"] = 0.0
+            features[f"largest_negative_patch_area_{ph_label}"] = 0.0
+            features[f"largest_positive_patch_charge_{ph_label}"] = 0.0
+            features[f"largest_negative_patch_charge_{ph_label}"] = 0.0
+            features[f"largest_positive_patch_density_{ph_label}"] = 0.0
+            features[f"largest_negative_patch_density_{ph_label}"] = 0.0
 
         if not self.residues:
             logger.warning("No residues loaded; returning zero patch localization features")
             return features
-
-        positive_patches, negative_patches = _identify_patches(self.residues)
 
         def summarize_largest_patch(patches, use_abs_charge: bool = True):
             """
@@ -1515,29 +1569,35 @@ class MCCEFeatureExtractor:
 
             return area, charge, density
 
-        (
-            largest_positive_patch_area,
-            largest_positive_patch_charge,
-            largest_positive_patch_density,
-        ) = summarize_largest_patch(positive_patches)
+        for ph in CHARGE_PH_VALUES:
+            ph_label = _ph_label(ph)
+            self._apply_charges_for_ph(ph_label)
+            positive_patches, negative_patches = _identify_patches(self.residues)
 
-        (
-            largest_negative_patch_area,
-            largest_negative_patch_charge,
-            largest_negative_patch_density,
-        ) = summarize_largest_patch(negative_patches)
+            (
+                largest_positive_patch_area,
+                largest_positive_patch_charge,
+                largest_positive_patch_density,
+            ) = summarize_largest_patch(positive_patches)
 
-        features.update(
-            {
-                "largest_positive_patch_area": largest_positive_patch_area,
-                "largest_negative_patch_area": largest_negative_patch_area,
-                "largest_positive_patch_charge": largest_positive_patch_charge,
-                "largest_negative_patch_charge": largest_negative_patch_charge,
-                "largest_positive_patch_density": largest_positive_patch_density,
-                "largest_negative_patch_density": largest_negative_patch_density,
-            }
-        )
+            (
+                largest_negative_patch_area,
+                largest_negative_patch_charge,
+                largest_negative_patch_density,
+            ) = summarize_largest_patch(negative_patches)
 
+            features.update(
+                {
+                    f"largest_positive_patch_area_{ph_label}": largest_positive_patch_area,
+                    f"largest_negative_patch_area_{ph_label}": largest_negative_patch_area,
+                    f"largest_positive_patch_charge_{ph_label}": largest_positive_patch_charge,
+                    f"largest_negative_patch_charge_{ph_label}": largest_negative_patch_charge,
+                    f"largest_positive_patch_density_{ph_label}": largest_positive_patch_density,
+                    f"largest_negative_patch_density_{ph_label}": largest_negative_patch_density,
+                }
+            )
+
+        self._apply_charges_for_ph("7.0")
         return features
     
     def extract_asymmetry_features(self) -> Dict[str, float]:
@@ -1572,12 +1632,13 @@ class MCCEFeatureExtractor:
         surface_sasa_percentage_threshold = 0.1
         pseudocount = 1e-6
 
-        features = {
-            "all_charge_spatial_moment_magnitude": 0.0,
-            "surface_charge_spatial_moment_magnitude": 0.0,
-            "all_charge_spatial_moment_normalized": 0.0,
-            "surface_charge_spatial_moment_normalized": 0.0,
-        }
+        features = {}
+        for ph in CHARGE_PH_VALUES:
+            ph_label = _ph_label(ph)
+            features[f"all_charge_spatial_moment_magnitude_{ph_label}"] = 0.0
+            features[f"surface_charge_spatial_moment_magnitude_{ph_label}"] = 0.0
+            features[f"all_charge_spatial_moment_normalized_{ph_label}"] = 0.0
+            features[f"surface_charge_spatial_moment_normalized_{ph_label}"] = 0.0
 
         if not self.residues:
             logger.warning("No residues loaded; returning zero asymmetry features")
@@ -1632,22 +1693,26 @@ class MCCEFeatureExtractor:
 
             return dipole_magnitude, dipole_normalized
 
-        all_residues = get_valid_residues(self.residues)
+        for ph in CHARGE_PH_VALUES:
+            ph_label = _ph_label(ph)
+            self._apply_charges_for_ph(ph_label)
+            all_residues = get_valid_residues(self.residues)
 
-        surface_residues = [
-            residue for residue in all_residues
-            if (getattr(residue, "sasa_fraction", 0.0) or 0.0)
-            > surface_sasa_percentage_threshold
-        ]
+            surface_residues = [
+                residue for residue in all_residues
+                if (getattr(residue, "sasa_fraction", 0.0) or 0.0)
+                > surface_sasa_percentage_threshold
+            ]
 
-        (
-            features["all_charge_spatial_moment_magnitude"],
-            features["all_charge_spatial_moment_normalized"],
-        ) = calculate_dipole_features(all_residues)
+            (
+                features[f"all_charge_spatial_moment_magnitude_{ph_label}"],
+                features[f"all_charge_spatial_moment_normalized_{ph_label}"],
+            ) = calculate_dipole_features(all_residues)
 
-        (
-            features["surface_charge_spatial_moment_magnitude"],
-            features["surface_charge_spatial_moment_normalized"],
-        ) = calculate_dipole_features(surface_residues)
+            (
+                features[f"surface_charge_spatial_moment_magnitude_{ph_label}"],
+                features[f"surface_charge_spatial_moment_normalized_{ph_label}"],
+            ) = calculate_dipole_features(surface_residues)
 
+        self._apply_charges_for_ph("7.0")
         return features
