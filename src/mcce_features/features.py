@@ -21,8 +21,8 @@ RESIDUE_ALIASES = {
 }
 
 PK0_VALUES = {
-    "ASP": 4.75,
-    "GLU": 4.75,
+    "ASP": 3.90,
+    "GLU": 4.10,
     "LYS": 10.4,
     "ARG": 12.5,
     "HIS": 6.98,
@@ -885,7 +885,7 @@ class MCCEFeatureExtractor:
                     residue.name = res_name
                     residue.is_acidic = res_name in ACIDS
                     residue.is_basic = res_name in BASES
-                    residue.pk0 = PK0_VALUES.get(res_name, 0.0)
+                    residue.pka0 = PK0_VALUES.get(res_name, 0.0)
                     residue.atoms = []
                     residues_by_id[residue_id] = residue
 
@@ -977,6 +977,14 @@ class MCCEFeatureExtractor:
             except ValueError:
                 return None
 
+        def find_ph7_index(ph_values):
+            """Return the pH 7 column index for variants like 7, 7.0, and 7.00."""
+            for index, value in enumerate(ph_values):
+                ph = safe_float(value)
+                if ph == 7.0:
+                    return index
+            return None
+
         residue_by_id = {
             residue.residue_id: residue
             for residue in self.residues
@@ -1004,15 +1012,14 @@ class MCCEFeatureExtractor:
                 if fields[0] == "ph":
                     ph_values = fields[1:]
 
-                    try:
-                        ph7_index = ph_values.index("7.0")
+                    ph7_index = find_ph7_index(ph_values)
+                    if ph7_index is not None:
                         logger.debug("Found pH 7.0 charge column at index %d", ph7_index)
-                    except ValueError:
+                    else:
                         logger.warning(
                             "Could not find pH 7.0 column in %s; charge values will not be loaded",
                             sum_charge_file,
                         )
-                        ph7_index = None
 
                     continue
 

@@ -2,6 +2,7 @@
 Implementation of core functionalities for the mcce-features package.
 """
 import csv
+from collections import Counter
 from functools import partial
 import logging
 from pathlib import Path
@@ -105,25 +106,52 @@ def extract_folders(
     if not folder_paths:
         raise ValueError(f"No folders found in {folders_fp.parent}")
 
+    folder_name_counts = Counter(folder.name for folder in folder_paths)
+    duplicate_names = {
+        name: count
+        for name, count in folder_name_counts.items()
+        if count > 1
+    }
+    if duplicate_names:
+        duplicate_summary = ", ".join(
+            f"{name} ({count})"
+            for name, count in sorted(duplicate_names.items())
+        )
+        logging.warning(
+            "Duplicate MCCE folder names encountered; output mcce_folder values may be ambiguous: %s",
+            duplicate_summary,
+        )
+
     logging.info(f"Found {len(folder_paths)} MCCE folders to process in {folders_fp.parent}")
 
     header_written = False
-    with open(output_file, "w", newline="") as fout:
-        writer = None
+    writer = None
+    fout = None
+    rows_written = 0
 
+    try:
         for i, mcce_folder in enumerate(folder_paths, start=1):
             logging.info(f"[{i:,}/{len(folder_paths):,}] Processing {mcce_folder}")
             try:
                 feature_names, features = extract(mcce_folder, verbose=False)
                 if feature_names is not None:
                     if not header_written:
+                        fout = open(output_file, "w", newline="")
                         writer = csv.writer(fout, delimiter="\t")
                         writer.writerow(["mcce_folder"] + list(feature_names))
                         header_written = True
                     writer.writerow([mcce_folder.name] + list(features))
+                    rows_written += 1
             except Exception as exc:
                 logging.exception(f"Failed to process {mcce_folder}: {exc}")
                 continue
+    finally:
+        if fout is not None:
+            fout.close()
+
+    if rows_written == 0:
+        logging.error("No features extracted, and do not write the output file")
+        return
 
     logging.info(f"Wrote feature table to {output_file}\n")
 
