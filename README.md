@@ -123,6 +123,25 @@ ARG, HIS, NTR, and NTG.
 
 ## Quick Start
 
+### Installation
+`pip install mcce-features`
+
+The CLI entry point will be available after a successful installation:
+
+```
+mcce-features
+```
+
+To extract features from an MCCE folder
+```
+mcce-features extract <folder_name>
+```
+
+To extract feature from multiple MCCE folders
+```
+mcce-features extract-folders <folder.lst>
+```
+
 ### Installation with latest changes (recommended)
 The repo is not yet setup to publish automatically, so the usual pip install will be
 the original version.
@@ -142,24 +161,6 @@ conda activate p312
 (p312)> mcce-features extract-subfolders-with-book .
 ```
 
-### Installation
-`pip install mcce-features`
-
-The CLI entry point will be available after a successful installation:
-
-```
-mcce-features
-```
-
-To extract features from an MCCE folder
-```
-mcce-features extract <folder_name>
-```
-
-To extract feature from multiple MCCE folders
-```
-mcce-features extract-folders <folder.lst>
-```
 
 File <folder.lst> can be a (space, comma, tab) delimited file with a
 MCCE folder name in the first column of each line.
