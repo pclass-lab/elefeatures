@@ -124,34 +124,37 @@ def extract_folders(
 
     logging.info(f"Found {len(folder_paths)} MCCE folders to process in {folders_fp.parent}")
 
-    header_written = False
-    writer = None
-    fout = None
+    rows = []
+    all_feature_names = []
     rows_written = 0
 
-    try:
-        for i, mcce_folder in enumerate(folder_paths, start=1):
-            logging.info(f"[{i:,}/{len(folder_paths):,}] Processing {mcce_folder}")
-            try:
-                feature_names, features = extract(mcce_folder, verbose=False)
-                if feature_names is not None:
-                    if not header_written:
-                        fout = open(output_file, "w", newline="")
-                        writer = csv.writer(fout, delimiter="\t")
-                        writer.writerow(["mcce_folder"] + list(feature_names))
-                        header_written = True
-                    writer.writerow([mcce_folder.name] + list(features))
-                    rows_written += 1
-            except Exception as exc:
-                logging.exception(f"Failed to process {mcce_folder}: {exc}")
-                continue
-    finally:
-        if fout is not None:
-            fout.close()
+    for i, mcce_folder in enumerate(folder_paths, start=1):
+        logging.info(f"[{i:,}/{len(folder_paths):,}] Processing {mcce_folder}")
+        try:
+            feature_names, features = extract(mcce_folder, verbose=False)
+            if feature_names is not None:
+                feature_row = dict(zip(feature_names, features))
+                rows.append((mcce_folder.name, feature_row))
+                for feature_name in feature_names:
+                    if feature_name not in all_feature_names:
+                        all_feature_names.append(feature_name)
+                rows_written += 1
+        except Exception as exc:
+            logging.exception(f"Failed to process {mcce_folder}: {exc}")
+            continue
 
     if rows_written == 0:
         logging.error("No features extracted, and do not write the output file")
         return
+
+    with open(output_file, "w", newline="") as fout:
+        writer = csv.writer(fout, delimiter="\t")
+        writer.writerow(["mcce_folder"] + all_feature_names)
+        for mcce_folder_name, feature_row in rows:
+            writer.writerow(
+                [mcce_folder_name] +
+                [feature_row.get(feature_name, "") for feature_name in all_feature_names]
+            )
 
     logging.info(f"Wrote feature table to {output_file}\n")
 

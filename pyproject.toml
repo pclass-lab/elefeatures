@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcce-features"
-version = "0.6.0"
+version = "0.6.1"
 description = "Extract MCCE electrostatic features for PClass"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -58,4 +58,3 @@ Homepage = "https://github.com/pclass-lab/elefeatures"
 Repository = "https://github.com/pclass-lab/elefeatures"
 Issues = "https://github.com/pclass-lab/elefeatures/issues"
 Documentation = "https://github.com/pclass-lab/elefeatures#readme"
-

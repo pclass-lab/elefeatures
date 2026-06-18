@@ -8,7 +8,8 @@ This project is to extract electrostatic features from a protein structure. Prop
 
 ## Electrostatic Features
 
-Total features: 83.
+Total features: 83 standard features. Additional custom numeric features can be
+appended from an optional `mcce-features.txt` file in each MCCE folder.
 
 The feature set summarizes protein electrostatics from MCCE output files. Charges
 are taken at pH 6.0, 7.0, and 8.0 from `sum_crg.out`, solvent accessibility from `acc.res`,
@@ -16,6 +17,47 @@ pKa values from `pK.out`, and residue coordinates from `step1_out.pdb`.
 Surface residues are residues with solvent-accessible surface area fraction
 greater than 0.1. Acidic residues are ASP, GLU, and CTR; basic residues are LYS,
 ARG, HIS, NTR, and NTG.
+
+## Custom Features
+
+Use `mcce-features.txt` when you already have extra numeric descriptors for a
+protein and want `mcce-features` to carry them into the same output table as the
+standard electrostatic features. This is useful for adding values from another
+program, manual curation, or a separate analysis step without changing the
+`mcce-features` source code.
+
+Place the file in the MCCE working directory being extracted. The filename must
+be exactly:
+
+```text
+mcce-features.txt
+```
+
+Each non-empty line defines one additional feature as:
+
+```text
+feature_name: value
+```
+
+The feature name becomes the output column name, and the value must be numeric.
+Multiple feature/value pairs are allowed.
+
+Example:
+
+```text
+folding_energy: -12.7
+sas_to_volume: 2.3
+```
+
+When the file is present, `MCCEFeatureExtractor` reads these pairs and appends
+them after the 83 standard feature columns. In batch output, custom columns are
+included when any processed folder defines them; folders that do not define a
+given custom feature leave that value blank.
+
+If a line is malformed, has an empty feature name, or has a non-numeric value,
+that line is skipped and a warning is logged. If a custom feature uses the same
+name as a standard feature, it is skipped to avoid overwriting the standard
+calculation.
 
 ## Category: Core Composition (9 features)
 
