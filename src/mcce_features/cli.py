@@ -95,3 +95,7 @@ def extract_subfolders_cmd(
 ):
     """Extract electrostatic features from multiple sets of MCCE folders."""
     core.extract_subfolders_with_book(simulations_folder, output_file)
+
+
+if __name__ == "__main__":
+    app()
