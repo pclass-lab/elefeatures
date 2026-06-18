@@ -94,6 +94,7 @@ SOURCE_FILES = [
 ]
 
 CHARGE_PH_VALUES = (6.0, 7.0, 8.0)
+CUSTOM_FEATURES_FILE = "mcce-features.txt"
 
 class Atom:
     """A class representing an atom in the protein structure."""
@@ -210,7 +211,7 @@ class MCCEFeatureExtractor:
     def __init__(self):
         self.mcce_folder = None
         # REGISTER ALL FEATURE NAMES HERE
-        self.feature_names = [
+        self.standard_feature_names = [
             # Global composition and pH-7 net-charge summary.
             "net_charge",
             "isoelectric_point",
@@ -309,6 +310,7 @@ class MCCEFeatureExtractor:
             "nearest_negative_charge_distance",
 
         ]
+        self.feature_names = list(self.standard_feature_names)
 
     def missing_sources(self) -> bool:
         if self.mcce_folder is None:
@@ -1082,6 +1084,9 @@ class MCCEFeatureExtractor:
         features.update(self.extract_asymmetry_features())
         features.update(self.extract_dipole_features())
         features.update(self.extract_nearest_charge_distance_features())
+        custom_features = self.extract_custom_features()
+        self.feature_names = list(self.standard_feature_names) + list(custom_features)
+        features.update(custom_features)
 
         # Guardrail 1: missing registered features
         missing = set(self.feature_names) - set(features)
@@ -1098,6 +1103,74 @@ class MCCEFeatureExtractor:
             float(f"{v:.3g}") if abs(v) < 1.0 else round(v, 3)
             for v in (features[name] for name in self.feature_names)
         ]
+
+    def extract_custom_features(self) -> Dict[str, float]:
+        """
+        Read optional user-defined numeric features from mcce-features.txt.
+
+        Each non-empty line must have the form:
+            feature_name: numeric_value
+        """
+        custom_features = OrderedDict()
+        custom_feature_file = Path(self.mcce_folder) / CUSTOM_FEATURES_FILE
+        if not custom_feature_file.exists():
+            return custom_features
+
+        logger = logging.getLogger(__name__)
+        logger.info("Reading custom features from %s", custom_feature_file)
+
+        for line_number, line in enumerate(custom_feature_file.read_text().splitlines(), start=1):
+            line = line.strip()
+            if not line:
+                continue
+            if ":" not in line:
+                logger.warning(
+                    "Skipping malformed custom feature line %s:%d: %r",
+                    custom_feature_file,
+                    line_number,
+                    line,
+                )
+                continue
+
+            name, value_text = (part.strip() for part in line.split(":", 1))
+            if not name:
+                logger.warning(
+                    "Skipping custom feature with empty name in %s:%d",
+                    custom_feature_file,
+                    line_number,
+                )
+                continue
+            if name in self.standard_feature_names:
+                logger.warning(
+                    "Skipping custom feature %r in %s:%d because it duplicates a standard feature",
+                    name,
+                    custom_feature_file,
+                    line_number,
+                )
+                continue
+
+            try:
+                value = float(value_text)
+            except ValueError:
+                logger.warning(
+                    "Skipping custom feature %r in %s:%d because value is not numeric: %r",
+                    name,
+                    custom_feature_file,
+                    line_number,
+                    value_text,
+                )
+                continue
+
+            if name in custom_features:
+                logger.warning(
+                    "Duplicate custom feature %r in %s:%d; using the last value",
+                    name,
+                    custom_feature_file,
+                    line_number,
+                )
+            custom_features[name] = value
+
+        return custom_features
     
     def load_protein_structure(self):
         """Load the protein structure from MCCE output files."""

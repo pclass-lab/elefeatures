@@ -7,6 +7,35 @@ and this project adheres to Semantic Versioning.
 
 ---
 
+## [0.6.1] - 2026-06-18
+
+### Added
+
+- Expanded the feature set to 83 electrostatic descriptors.
+- Added residue-specific acid/base composition features for GLU, ASP, LYS, and ARG.
+- Added residue-specific pKa perturbation features for GLU, ASP, LYS, and ARG.
+- Added pH-specific surface charge features at pH 6.0, 7.0, and 8.0.
+- Added pH-specific buried charge features at pH 6.0, 7.0, and 8.0.
+- Added pH-specific charge patch features at pH 6.0, 7.0, and 8.0.
+- Added pH-specific charge asymmetry and separation features at pH 6.0, 7.0, and 8.0.
+- Added nearest charged-residue distance features based on residue anchor points.
+- Added optional custom numeric features from `mcce-features.txt` files.
+
+### Changed
+
+- Updated charge-derived feature names to include their pH suffixes.
+- Updated README feature documentation with feature categories and counts.
+- Updated batch output to include optional custom feature columns across folders.
+- Preserved pH 7.0 fallback behavior for callers that provide residue charges directly.
+- Standardized no-base acid-to-base ratio handling to use `999.0`.
+
+### Fixed
+
+- Corrected `pk0` naming to `pka0`.
+- Corrected Lys/Arg pKa-shift feature labels to use `bases_only`.
+- Added the `python -m mcce_features.cli` entry-point block.
+- Prevent output file creation when no features are extracted.
+
 ## [0.5.0] - 2026-05-18
 
 ### Added
