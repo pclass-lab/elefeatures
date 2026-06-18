@@ -224,8 +224,8 @@ class MCCEFeatureExtractor:
             "glu_big_pka_shift_fraction_acids_only",
             "asp_big_pka_shift_fraction_acids_only",
             "base_big_pka_shift_fraction_bases_only",
-            "lys_big_pka_shift_fraction_acids_only",
-            "arg_big_pka_shift_fraction_acids_only",
+            "lys_big_pka_shift_fraction_bases_only",
+            "arg_big_pka_shift_fraction_bases_only",
             "mean_abs_pka_shift",
             "max_abs_pka_shift",
 
@@ -494,8 +494,8 @@ class MCCEFeatureExtractor:
             - glu_big_pka_shift_fraction_acids_only
             - asp_big_pka_shift_fraction_acids_only
             - base_big_pka_shift_fraction_bases_only
-            - lys_big_pka_shift_fraction_acids_only
-            - arg_big_pka_shift_fraction_acids_only
+            - lys_big_pka_shift_fraction_bases_only
+            - arg_big_pka_shift_fraction_bases_only
             - mean_abs_pka_shift
             - max_abs_pka_shift
 
@@ -521,8 +521,8 @@ class MCCEFeatureExtractor:
                 "glu_big_pka_shift_fraction_acids_only": 0.0,
                 "asp_big_pka_shift_fraction_acids_only": 0.0,
                 "base_big_pka_shift_fraction_bases_only": 0.0,
-                "lys_big_pka_shift_fraction_acids_only": 0.0,
-                "arg_big_pka_shift_fraction_acids_only": 0.0,
+                "lys_big_pka_shift_fraction_bases_only": 0.0,
+                "arg_big_pka_shift_fraction_bases_only": 0.0,
                 "mean_abs_pka_shift": 0.0,
                 "max_abs_pka_shift": 0.0,
             }
@@ -599,12 +599,12 @@ class MCCEFeatureExtractor:
             if base_count > 0
             else 0.0
         )
-        features["lys_big_pka_shift_fraction_acids_only"] = (
+        features["lys_big_pka_shift_fraction_bases_only"] = (
             lys_big_shift_count / base_count
             if base_count > 0
             else 0.0
         )
-        features["arg_big_pka_shift_fraction_acids_only"] = (
+        features["arg_big_pka_shift_fraction_bases_only"] = (
             arg_big_shift_count / base_count
             if base_count > 0
             else 0.0
