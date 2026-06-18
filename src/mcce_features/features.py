@@ -313,7 +313,15 @@ class MCCEFeatureExtractor:
     def _apply_charges_for_ph(self, ph_label: str):
         """Set residue.charge values from cached charges for one pH."""
         for residue in self.residues:
-            residue.charge = getattr(residue, "charges_by_ph", {}).get(ph_label, 0.0)
+            if not hasattr(residue, "_fallback_charge_7_0"):
+                residue._fallback_charge_7_0 = residue.charge
+            charges_by_ph = getattr(residue, "charges_by_ph", {})
+            if ph_label in charges_by_ph:
+                residue.charge = charges_by_ph[ph_label]
+            elif ph_label == "7.0":
+                residue.charge = residue._fallback_charge_7_0
+            else:
+                residue.charge = 0.0
 
 
     def extract_composition_features(self) -> Dict[str, float]:
