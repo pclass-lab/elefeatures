@@ -522,7 +522,7 @@ class MCCEFeatureExtractor:
         elif acidic_count == 0 and basic_count == 0:
             acid_to_base_ratio = 1.0
         else:
-            acid_to_base_ratio = 999.0   # Arbitrary large number to indicate all acids and no bases
+            acid_to_base_ratio = -1.0   # Arbitrary large number to indicate all acids and no bases
 
         # ------------------------------------------------------------
         # Store features
@@ -763,7 +763,7 @@ class MCCEFeatureExtractor:
                 return acid_charge / base_charge
             if acid_charge == 0 and base_charge == 0:
                 return 1.0
-            return 999.0
+            return -1.0
 
         def zero_features() -> Dict[str, float]:
             features = {}
@@ -849,7 +849,7 @@ class MCCEFeatureExtractor:
                 return acid_charge / base_charge
             if acid_charge == 0 and base_charge == 0:
                 return 1.0
-            return 999.0
+            return -1.0
 
         def zero_features() -> Dict[str, float]:
             features = {}
